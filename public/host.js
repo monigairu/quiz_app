@@ -150,8 +150,77 @@ function renderAdminPanel() {
 function buildSetupUI() {
   $("addQ").onclick = () => addQuestionRow();
   $("saveBtn").onclick = saveAndStart;
+  $("clearDraft").onclick = clearDraft;
   buildTableCountSelect();
-  addQuestionRow(); // 初期1問
+
+  // 下書きの復元（あれば）。無ければ空の1問でスタート
+  const restored = loadDraft();
+  if (!restored) addQuestionRow();
+
+  // 入力のたびに自動保存（デバウンス）
+  $("setup").addEventListener("input", scheduleSaveDraft);
+  $("setup").addEventListener("change", scheduleSaveDraft);
+}
+
+// ---- 下書きの自動保存（localStorage）--------------------------------------
+const DRAFT_KEY = "quizDraft:v1";
+let draftTimer = null;
+
+function scheduleSaveDraft() {
+  clearTimeout(draftTimer);
+  draftTimer = setTimeout(saveDraft, 500);
+}
+
+function serializeQuestions() {
+  return [...document.querySelectorAll(".qrow")].map((row) => ({
+    text: row.querySelector(".q-text-input").value,
+    choices: [...row.querySelectorAll(".c-input")].map((el) => el.value),
+    answer: Number(row.querySelector('input[type="radio"]:checked').value),
+  }));
+}
+
+function saveDraft() {
+  try {
+    const draft = {
+      title: $("title").value,
+      scoring: document.querySelector('input[name="scoring"]:checked').value,
+      tables: $("tables").value,
+      questions: serializeQuestions(),
+      savedAt: Date.now(),
+    };
+    localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+    const t = new Date(draft.savedAt);
+    $("draftStatus").textContent =
+      `💾 自動保存しました（${String(t.getHours()).padStart(2, "0")}:${String(t.getMinutes()).padStart(2, "0")}）`;
+  } catch (_) { /* localStorage 不可環境は無視 */ }
+}
+
+function loadDraft() {
+  let draft;
+  try { draft = JSON.parse(localStorage.getItem(DRAFT_KEY)); } catch (_) { return false; }
+  if (!draft || !Array.isArray(draft.questions)) return false;
+
+  $("title").value = draft.title || "懇親会クイズ大会";
+  const r = document.querySelector(`input[name="scoring"][value="${draft.scoring}"]`);
+  if (r) r.checked = true;
+  $("tables").value = draft.tables || "";
+  $("questions").innerHTML = "";
+  if (draft.questions.length) draft.questions.forEach((q) => addQuestionRow(q));
+  else addQuestionRow();
+  $("draftStatus").textContent = "✅ 前回の下書きを復元しました（自動保存中）";
+  return true;
+}
+
+function clearDraft() {
+  if (!confirm("下書きを消して、入力を最初からやり直しますか？")) return;
+  localStorage.removeItem(DRAFT_KEY);
+  $("title").value = "懇親会クイズ大会";
+  document.querySelector('input[name="scoring"][value="correct"]').checked = true;
+  $("tables").value = "";
+  $("tableCount").value = "";
+  $("questions").innerHTML = "";
+  addQuestionRow();
+  $("draftStatus").textContent = "🗑️ 下書きを消しました";
 }
 
 // グループ数プルダウン（1〜20）。選ぶとテーブル名欄に「グループ1〜N」を自動入力

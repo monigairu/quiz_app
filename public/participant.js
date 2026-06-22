@@ -138,7 +138,7 @@ function renderQuestion(reveal) {
   let html = `<div class="card center" style="padding:10px">
     <span class="pill">${esc(myTableName())}</span>
     <span class="pill">第${idx + 1}問 / ${ev.questionCount}</span></div>`;
-  html += `<div class="card"><p class="q-text">${esc(q.text)}</p></div><div class="choices">`;
+  html += `<div class="card"><p class="q-text">${esc(q.text)}</p></div><div class="choices quiz4">`;
   q.choices.forEach((c, i) => {
     let cls = "choice";
     if (reveal) {

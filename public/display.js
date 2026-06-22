@@ -35,7 +35,7 @@ function render() {
     if (!q) { c.innerHTML = "―"; return; }
     const forThis = answers.filter((a) => a.qIndex === ev.currentIndex);
     const answerIndex = ev.phase === PHASE.REVEAL ? ev.revealIndex : null;
-    let html = `<p class="q-text">${esc(q.text)}</p><div class="choices">`;
+    let html = `<p class="q-text">${esc(q.text)}</p><div class="choices quiz4">`;
     q.choices.forEach((ch, i) => {
       const correct = ev.phase === PHASE.REVEAL && i === answerIndex;
       const n = forThis.filter((a) => a.choice === i).length;

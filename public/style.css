@@ -1,82 +1,143 @@
+@import url('https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@500;700;800&display=swap');
+
+/* =========================================================================
+   ポップ&カラフル（Kahoot 風）テーマ
+   ========================================================================= */
 :root {
-  --bg: #0f172a;
-  --card: #1e293b;
-  --accent: #6366f1;
-  --accent2: #22c55e;
-  --text: #f1f5f9;
-  --muted: #94a3b8;
+  --bg1: #7b2ff7;
+  --bg2: #46178f;
+  --card: #ffffff;
+  --ink: #2b1b54;       /* カード内の濃い文字 */
+  --muted: #6b7280;     /* カード内の薄い文字 */
+  --accent: #7b2ff7;    /* メイン（紫） */
+  --green: #1fb56b;     /* 開始・正解 */
   --danger: #ef4444;
+  --ghost: #eef0f6;
+  --ghost-ink: #3f3d56;
+  /* 選択肢4色 */
+  --c1: #e21b3c; /* 赤 ▲ */
+  --c2: #1368ce; /* 青 ◆ */
+  --c3: #e6a700; /* 黄 ● */
+  --c4: #26890c; /* 緑 ■ */
 }
+
 * { box-sizing: border-box; }
+
 body {
   margin: 0;
-  font-family: "Hiragino Sans", "Yu Gothic", system-ui, sans-serif;
-  background: var(--bg);
-  color: var(--text);
+  font-family: "M PLUS Rounded 1c", system-ui, "Hiragino Sans", "Yu Gothic", sans-serif;
+  color: #fff;
+  background: linear-gradient(160deg, var(--bg1), var(--bg2)) fixed;
+  min-height: 100vh;
   -webkit-text-size-adjust: 100%;
 }
-.wrap { max-width: 640px; margin: 0 auto; padding: 16px; }
-.wrap.wide { max-width: 980px; }
-h1 { font-size: 1.4rem; margin: .2em 0; }
+
+.wrap { max-width: 640px; margin: 0 auto; padding: 16px 16px 48px; }
+.wrap.wide { max-width: 1000px; }
+
+h1 { font-size: 1.5rem; font-weight: 800; margin: .3em 0; text-shadow: 0 2px 0 rgba(0,0,0,.12); }
+h2, h3 { color: var(--ink); }
 .muted { color: var(--muted); }
+.center { text-align: center; }
+.big { font-size: 2.6rem; font-weight: 800; }
+
+/* ---- カード ---- */
 .card {
   background: var(--card);
-  border-radius: 16px;
-  padding: 20px;
-  margin: 14px 0;
-  box-shadow: 0 6px 20px rgba(0,0,0,.25);
+  color: var(--ink);
+  border-radius: 20px;
+  padding: 22px;
+  margin: 16px 0;
+  box-shadow: 0 10px 24px rgba(40, 10, 80, .22);
 }
-input, button { font-size: 1rem; font-family: inherit; }
+
+/* ---- 入力 ---- */
 input, textarea, select {
-  width: 100%; padding: 14px; border-radius: 12px; border: 1px solid #334155;
-  background: #0b1220; color: var(--text); margin: 6px 0 14px;
+  width: 100%; padding: 14px; border-radius: 14px; border: 2px solid #e5e7eb;
+  background: #fff; color: var(--ink); margin: 6px 0 14px; font-size: 1rem;
+  font-family: inherit;
 }
-textarea { font-family: inherit; resize: vertical; }
-label { font-weight: 700; font-size: .9rem; color: var(--muted); display: block; }
-label.radio { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; color: var(--text); }
+input:focus, textarea:focus, select:focus { outline: none; border-color: var(--accent); }
+textarea { resize: vertical; }
+label { font-weight: 700; font-size: .9rem; color: var(--ink); display: block; }
+label.radio { display: inline-flex; align-items: center; gap: 6px; font-weight: 700; }
 label.radio input, .choice-edit input[type="radio"] { width: auto; margin: 0; }
 .choice-edit { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
-.choice-edit .c-input { margin: 0; }
-.qrow .q-text-input { margin: 0; }
-a { color: var(--accent); }
+.choice-edit .c-input, .qrow .q-text-input { margin: 0; }
+a { color: #ffe600; font-weight: 700; }
+
+/* ---- ボタン ---- */
 button {
-  cursor: pointer; border: none; border-radius: 12px; padding: 14px 18px;
-  background: var(--accent); color: #fff; font-weight: 700; width: 100%;
+  cursor: pointer; border: none; border-radius: 14px; padding: 15px 18px;
+  background: var(--accent); color: #fff; font-weight: 800; width: 100%;
+  font-family: inherit; font-size: 1rem;
+  box-shadow: 0 4px 0 rgba(0,0,0,.18); transition: transform .05s ease, box-shadow .05s ease;
 }
-button.ghost { background: #334155; }
-button.green { background: var(--accent2); }
-button.danger { background: var(--danger); }
-button:disabled { opacity: .45; cursor: not-allowed; }
+button:active { transform: translateY(3px); box-shadow: 0 1px 0 rgba(0,0,0,.18); }
+button.ghost { background: var(--ghost); color: var(--ghost-ink); box-shadow: 0 4px 0 #d7dae6; }
+button.green { background: var(--green); box-shadow: 0 4px 0 #148a50; }
+button.danger { background: var(--danger); box-shadow: 0 4px 0 #b91c1c; }
+button:disabled { opacity: .5; cursor: not-allowed; box-shadow: none; transform: none; }
 button + button { margin-top: 10px; }
+
 .row { display: flex; gap: 10px; }
 .row > * { flex: 1; }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+@media (max-width: 600px) { .grid2 { grid-template-columns: 1fr; } }
+
+/* ---- 選択肢（共通） ---- */
 .choices { display: grid; gap: 12px; margin-top: 8px; }
 .choice {
-  text-align: left; padding: 18px; font-size: 1.1rem; background: var(--card);
-  border: 2px solid #334155; color: var(--text);
+  position: relative; text-align: left; padding: 18px 18px; font-size: 1.15rem; font-weight: 700;
+  background: var(--accent); color: #fff; border: none; border-radius: 16px;
+  box-shadow: 0 4px 0 rgba(0,0,0,.18);
 }
-.choice.selected { border-color: var(--accent); background: #312e81; }
-.choice.correct { border-color: var(--accent2); background: #14532d; }
-.choice.wrong { border-color: var(--danger); background: #450a0a; }
-.choice .badge { float: right; color: var(--muted); font-weight: 700; }
-.q-text { font-size: 1.5rem; font-weight: 800; line-height: 1.4; }
-.pill { display: inline-block; background: #334155; padding: 4px 12px; border-radius: 999px; font-size: .85rem; }
-.center { text-align: center; }
-.big { font-size: 2.4rem; font-weight: 900; }
+.choice .badge { float: right; font-size: .8rem; opacity: .92; font-weight: 700; }
+
+/* クイズ用の4色＋図形（参加者・会場表示の出題画面） */
+.choices.quiz4 > .choice:nth-child(4n+1) { background: var(--c1); box-shadow: 0 4px 0 #a81025; }
+.choices.quiz4 > .choice:nth-child(4n+2) { background: var(--c2); box-shadow: 0 4px 0 #0d4a96; }
+.choices.quiz4 > .choice:nth-child(4n+3) { background: var(--c3); box-shadow: 0 4px 0 #b07f00; color: #3a2c00; }
+.choices.quiz4 > .choice:nth-child(4n+4) { background: var(--c4); box-shadow: 0 4px 0 #1a610a; }
+.choices.quiz4 > .choice:nth-child(4n+1)::before { content: "▲ "; }
+.choices.quiz4 > .choice:nth-child(4n+2)::before { content: "◆ "; }
+.choices.quiz4 > .choice:nth-child(4n+3)::before { content: "● "; }
+.choices.quiz4 > .choice:nth-child(4n+4)::before { content: "■ "; }
+
+/* 状態（4色より優先） */
+.choice.selected { outline: 4px solid #fff; outline-offset: 2px; }
+.choice.correct { background: var(--green) !important; box-shadow: 0 4px 0 #148a50 !important; color: #fff !important; }
+.choice.wrong   { background: #9aa0aa !important; box-shadow: 0 4px 0 #6b7280 !important; color: #fff !important; }
+
+/* ---- 問題文・チップ ---- */
+.q-text { font-size: 1.6rem; font-weight: 800; line-height: 1.45; color: var(--ink); }
+.pill {
+  display: inline-block; background: #efe9ff; color: #5b21b6; padding: 5px 14px;
+  border-radius: 999px; font-size: .85rem; font-weight: 700; margin: 2px;
+}
+
+/* ---- 集計バー ---- */
+.bar { height: 12px; background: #eceef3; border-radius: 999px; overflow: hidden; margin-top: 6px; }
+.bar > span { display: block; height: 100%; background: var(--accent); transition: width .4s ease; }
+.statrow { margin: 10px 0; color: var(--ink); }
+
+/* ---- ランキング ---- */
 .standings { list-style: none; padding: 0; margin: 0; }
 .standings li {
-  display: flex; align-items: center; gap: 14px; padding: 14px;
-  background: var(--card); border-radius: 12px; margin: 10px 0; border-left: 6px solid var(--accent);
+  display: flex; align-items: center; gap: 14px; padding: 14px 16px;
+  background: #fff; color: var(--ink); border-radius: 14px; margin: 10px 0;
+  border-left: 8px solid var(--accent); box-shadow: 0 4px 12px rgba(40,10,80,.12);
 }
-.standings li .rank { font-size: 1.6rem; font-weight: 900; width: 1.6em; text-align: center; }
-.standings li.top1 { border-left-color: gold; }
-.standings li.top2 { border-left-color: silver; }
-.standings li.top3 { border-left-color: #cd7f32; }
-.score { margin-left: auto; font-weight: 800; }
-.bar { height: 10px; background: #334155; border-radius: 999px; overflow: hidden; margin-top: 6px; }
-.bar > span { display: block; height: 100%; background: var(--accent); }
-.statrow { margin: 8px 0; }
-.toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
-  background: var(--accent2); padding: 12px 20px; border-radius: 12px; font-weight: 700; }
-.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
-@media (max-width: 560px) { .grid2 { grid-template-columns: 1fr; } }
+.standings li .rank { font-size: 1.7rem; font-weight: 800; width: 1.6em; text-align: center; }
+.standings li.top1 { border-left-color: #ffcc00; }
+.standings li.top2 { border-left-color: #c0c7d0; }
+.standings li.top3 { border-left-color: #e08a3c; }
+.score { margin-left: auto; font-weight: 800; color: var(--accent); }
+
+/* ---- 紙吹雪（正解演出の土台。P2で本格化） ---- */
+@keyframes pop { 0% { transform: scale(.6); opacity: 0; } 60% { transform: scale(1.08); } 100% { transform: scale(1); opacity: 1; } }
+.pop { animation: pop .28s ease-out; }
+
+@media (prefers-reduced-motion: reduce) {
+  button, .bar > span, .pop { transition: none !important; animation: none !important; }
+}
