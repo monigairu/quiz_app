@@ -29,9 +29,9 @@ let app, auth, db;
 if (configReady) {
   app = initializeApp(window.firebaseConfig);
   auth = getAuth(app);
-  // 社内ネットワーク/プロキシがストリーミングを塞ぐ環境でもリアルタイム更新が
-  // 届くよう、ロングポーリングを自動検出して使う。
-  db = FS.initializeFirestore(app, { experimentalAutoDetectLongPolling: true });
+  // 社内ネットワーク/プロキシ/モバイル回線でもリアルタイム更新が確実に届くよう、
+  // ロングポーリングを強制（ストリーミングが半開きで止まる環境対策）。
+  db = FS.initializeFirestore(app, { experimentalForceLongPolling: true });
 }
 export { auth, db };
 

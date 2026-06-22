@@ -169,6 +169,9 @@ function renderQuestion(reveal) {
   const mine = myAnswers.get(idx);
   const answered = !!mine;
   const locked = answered && !editing; // 回答済みで選び直していない
+  // 締切と同時に公開される正解番号で判定（採点到着を待たない＝チラつき防止）
+  const correctIdx = (reveal && ev.revealIndex != null) ? ev.revealIndex : -1;
+  const iGotIt = answered && (correctIdx >= 0 ? mine.choice === correctIdx : mine.correct === true);
 
   let html = `<div class="card center" style="padding:10px">
     <span class="pill">${esc(myTableName())}</span>
@@ -182,8 +185,8 @@ function renderQuestion(reveal) {
   q.choices.forEach((c, i) => {
     let cls = "choice";
     if (reveal) {
-      // 自分の回答が正解だったかは answer doc の correct で判定（正解選択肢は非公開）
-      if (mine && mine.choice === i) cls += mine.correct ? " correct" : " wrong";
+      if (i === correctIdx) cls += " correct";                 // 正解を緑でハイライト
+      else if (mine && mine.choice === i) cls += " wrong";     // 自分の誤答を赤
     } else if (mine && mine.choice === i) {
       cls += " selected";
     }
@@ -204,10 +207,10 @@ function renderQuestion(reveal) {
       html += `<p class="muted center">選択肢をタップして回答</p>`;
     }
   } else {
-    const txt = !answered ? "⏰ 時間切れ" : (mine.correct ? "🎉 正解！" : "😢 不正解");
+    const txt = !answered ? "⏰ 時間切れ" : (iGotIt ? "🎉 正解！" : "😢 不正解");
     html += `<div class="card center"><p class="big pop">${txt}</p>
       <p class="muted">最終順位は最後にまとめて発表します。</p></div>`;
-    if (answered && mine.correct && celebratedReveal !== idx) {
+    if (iGotIt && celebratedReveal !== idx) {
       celebratedReveal = idx;
       launchConfetti();
     }
