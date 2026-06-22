@@ -33,8 +33,13 @@
 「プロジェクトを追加」（Google アナリティクスはオフでOK）。
 
 ### 2. ウェブアプリを登録して設定を取得
-プロジェクト画面の `</>`（ウェブ）アイコンからアプリを登録すると
-`firebaseConfig` が表示されます。その6項目を **`public/firebase-config.js`** に貼り付け。
+プロジェクト画面の `</>`（ウェブ）アイコンからアプリを登録すると `firebaseConfig`
+が表示されます。テンプレートをコピーして値を貼り付けてください：
+```bash
+cp public/firebase-config.example.js public/firebase-config.js
+# public/firebase-config.js を開き、6項目を貼り付ける
+```
+`public/firebase-config.js` は `.gitignore` 済みで **GitHub には push されません**。
 
 ### 3. Firestore Database を作成
 左メニュー「Firestore Database」→「データベースを作成」→ **テストモードで開始**、
@@ -45,12 +50,16 @@
 - **匿名（Anonymous）**：参加者（代表者）用
 - **Google**：主催者（作問・進行）用
 
-### 5. オーナー（作成者）の Google アカウントを設定
-作問できるルートのオーナーを、次の2か所に **同じ小文字メール** で設定します：
-- `public/admins.js` の `window.OWNER_EMAIL`
-- `firestore.rules` の `ownerEmail()`
+### 5. オーナー登録（メールはコードに書きません）
+管理者のメールはコード・ルールに **一切ハードコードしません**。初回だけ、オーナー本人が
+ホスト画面で登録します（**URL を配布する前に**実施してください）：
 
-共同作成者は、オーナーがホスト画面の「管理者設定」から Google メールで追加できます
+1. `/host` を開いて **Google ログイン**
+2. 表示される「**このアカウントをオーナーとして登録**」を押す
+   → `meta/admins` が未作成のときに限り、自分が唯一のオーナーになります（先着で確定）
+3. 以降は、オーナー（や追加された共同作成者）だけがワークスペースに入れます
+
+共同作成者は、ホスト画面の「管理者設定」から Google メールで追加・削除できます
 （Firestore の `meta/admins` に保存。コード変更・再デプロイ不要）。
 
 ## 起動・公開
@@ -97,26 +106,29 @@ events/{EVENT_ID}/questions/q{n}  問題文・選択肢（公開）
 events/{EVENT_ID}/keys/q{n}       正解インデックス（採点用・参加者には未公開）
 events/{EVENT_ID}/tables/t{n}     テーブル定義＋ロック状態（claimedByUid）
 events/{EVENT_ID}/answers/{tableId}_{qIndex}  回答（決定的IDで重複防止）
-meta/admins                       共同作成者の許可リスト { emails: [...] }
+meta/admins                       管理者の許可リスト { emails: [...], owner }
 ```
 `EVENT_ID` は `public/firebase-config.js` の `window.EVENT_ID`（既定 `"main"`）。
 
-## セキュリティ
+## セキュリティ / プライバシー
 
-- `apiKey` は Web では公開前提の識別子です（秘密鍵ではありません）。
+- **メールアドレス・apiKey はリポジトリに含めません**。
+  - 管理者メールはコード・ルールにハードコードせず、Firestore の `meta/admins` で管理。
+  - `public/firebase-config.js`（apiKey 等）は `.gitignore` 済み。テンプレート
+    `firebase-config.example.js` のみコミット。
 - **作業ワークスペースの保護は2段構え**：
-  1. UIゲート … 許可Googleアカウント以外はホスト画面に入れない
+  1. UIゲート … 許可アカウント以外はホスト画面に入れない
   2. Firestoreルール … 許可アカウント以外は問題・進行を書き込めない／正解(keys)も読めない
-- 当日前に **テストモードを卒業**し、同梱の `firestore.rules` をデプロイしてください
-  （`ownerEmail()` を実メールに設定後）：
+- 当日前に **テストモードを卒業**し、同梱の `firestore.rules` をデプロイしてください：
   ```bash
   npx firebase deploy --only firestore:rules
   ```
-  ※ デプロイするまではテストモード（誰でも読み書き可）のままなので、サーバ側の
-  　 権限チェックは効きません。本番前に必ずデプロイしてください。
+  ※ デプロイするまではテストモード（誰でも読み書き可）のままで、サーバ側の権限チェックは
+  　 効きません。本番前に必ずデプロイしてください。
+- `apiKey` は Web では公開前提の識別子（秘密鍵ではない）ですが、本リポジトリには載せない方針です。
 
 ## 技術構成
 
 - 静的サイト（HTML / CSS / Vanilla JS, ES Modules）
-- Firebase JS SDK v10（CDN）：Firestore（リアルタイム同期）＋ Anonymous Auth
+- Firebase JS SDK v10（CDN）：Firestore（リアルタイム同期）＋ 匿名 / Google 認証
 - ビルド不要・サーバ不要

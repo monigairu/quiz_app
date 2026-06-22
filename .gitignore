@@ -2,3 +2,7 @@ node_modules/
 npm-debug.log*
 .DS_Store
 *.log
+
+# 個人情報・APIキーを含むためコミットしない（テンプレートのみ管理）
+public/firebase-config.js
+.firebase/

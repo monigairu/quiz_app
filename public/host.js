@@ -3,7 +3,7 @@
 // =============================================================================
 import {
   fs, db, refs, gradeQuestion, guardConfig,
-  watchAuth, googleSignIn, signOutHost, watchAdmins, isAdminEmail, OWNER_EMAIL,
+  watchAuth, googleSignIn, signOutHost, watchAdmins, normEmail,
   PHASE, phaseLabel, $, esc, ms,
 } from "/common.js";
 
@@ -17,55 +17,81 @@ let tables = [];               // [{id, name, claimedByUid, claimedAt}]
 let answers = [];              // [{tableId, qIndex, choice, answeredAt, correct, points}]
 
 // ---- 認証・認可 ------------------------------------------------------------
+// 管理者(オーナー＋共同作成者)のメールはコードに持たず、Firestore(meta/admins)で管理。
+// セキュリティルールにより「管理者だけ」が meta/admins を読めるので、
+// 読み取り成功＝自分は管理者、エラー＝権限なし(または未初期化)、と判定できる。
 let me = null;                 // 現在の Google ユーザー
-let coAdmins = [];             // 共同作成者メール一覧
-let subscribed = false;
-let setupBuilt = false;
-
-let adminsStarted = false;
+let isAdmin = false;           // 管理者として読み取りに成功したか
+let coAdmins = [];             // 管理者メール一覧
+let owner = "";                // オーナーのメール
+let unsubAdmins = null;
+let workspaceBooted = false;
 
 function init() {
   $("googleLogin").onclick = () => googleSignIn().catch((e) => {
     $("gateMsg").textContent = "ログインに失敗しました：" + (e.code || e.message);
   });
   $("logoutBtn").onclick = () => signOutHost();
-  // 管理者リストの購読は、Google ログイン後（読み取り権限を得てから）開始する
-  watchAuth((user) => {
-    me = user;
-    if (me && !me.isAnonymous && !adminsStarted) {
-      adminsStarted = true;
-      watchAdmins((emails) => { coAdmins = emails; renderGate(); renderAdminPanel(); });
-    }
-    renderGate();
-  });
+  watchAuth((user) => { me = user; onAuthChange(); });
 }
 
-const amAdmin = () => me && !me.isAnonymous && isAdminEmail(me.email, coAdmins);
-const amOwner = () => me && OWNER_EMAIL && String(me.email).toLowerCase() === OWNER_EMAIL;
+function onAuthChange() {
+  if (unsubAdmins) { unsubAdmins(); unsubAdmins = null; }
+  isAdmin = false; coAdmins = []; owner = "";
+  if (me && !me.isAnonymous) subscribeAdmins();
+  renderGate();
+}
+
+function subscribeAdmins() {
+  unsubAdmins = watchAdmins(
+    (data) => { // 読めた＝自分は管理者
+      isAdmin = true; coAdmins = data.emails; owner = data.owner;
+      renderGate(); renderAdminPanel();
+    },
+    () => { // 権限なし or 未初期化
+      isAdmin = false; renderGate();
+    });
+}
+
+const amOwner = () => me && owner && normEmail(me.email) === owner;
 
 function renderGate() {
-  const authed = me && !me.isAnonymous;
-  if (amAdmin()) {
+  if (isAdmin) {
     $("gate").style.display = "none";
     $("workspace").style.display = "block";
     $("userEmail").textContent = me.email;
     $("roleBadge").textContent = amOwner() ? "オーナー" : "共同作成者";
-    if (!subscribed) { bootWorkspace(); subscribed = true; }
+    if (!workspaceBooted) { bootWorkspace(); workspaceBooted = true; }
     renderAdminPanel();
     return;
   }
-  // 未ログイン or 権限なし
   $("gate").style.display = "block";
   $("workspace").style.display = "none";
-  if (authed) {
-    $("gateMsg").innerHTML =
-      `このアカウント（<b>${esc(me.email)}</b>）には作成権限がありません。<br>` +
-      `オーナーに共同作成者として追加してもらってください。` +
-      `<br><button class="ghost" style="max-width:240px;margin:12px auto 0" id="switchAcc">別のアカウントでログイン</button>`;
-    const sw = $("switchAcc");
-    if (sw) sw.onclick = () => signOutHost().then(() => googleSignIn());
-  } else {
-    $("gateMsg").textContent = "";
+  const authed = me && !me.isAnonymous;
+  if (!authed) { $("gateMsg").textContent = ""; return; }
+  // ログイン済みだが管理者ではない（または初回・未初期化）
+  $("gateMsg").innerHTML =
+    `ログイン中：<b>${esc(me.email)}</b><br>` +
+    `このアカウントには作成権限がありません。<br>` +
+    `<button class="green" id="bootBtn" style="max-width:340px;margin:14px auto 6px">` +
+    `初回セットアップ：このアカウントをオーナーとして登録</button>` +
+    `<br><span class="muted">※ 既にオーナーがいる場合は、その方に共同作成者として追加してもらってください。</span>` +
+    `<br><button class="ghost" id="switchAcc" style="max-width:240px;margin:12px auto 0">別のアカウントでログイン</button>`;
+  $("bootBtn").onclick = registerAsOwner;
+  $("switchAcc").onclick = () => signOutHost().then(() => googleSignIn());
+}
+
+// 初回のみ：自分をオーナーとして登録（ルールでオーナー本人以外は拒否される）
+async function registerAsOwner() {
+  if (!confirm("このGoogleアカウントを、このクイズのオーナー（作成者）として登録します。よろしいですか？")) return;
+  const email = normEmail(me.email);
+  try {
+    await fs.setDoc(refs.metaAdmins, { emails: [email], owner: email }, { merge: true });
+    if (unsubAdmins) { unsubAdmins(); unsubAdmins = null; }
+    subscribeAdmins(); // 登録後に再購読 → 管理者として入れる
+  } catch (e) {
+    alert("オーナー登録できませんでした。\n" +
+      "（既に別のオーナーが登録済み、またはこのアカウントは許可されていません）\n" + (e.code || e.message));
   }
 }
 
@@ -87,20 +113,21 @@ function bindAdminPanel() {
 }
 
 async function addCoAdmin() {
-  const email = $("newAdmin").value.trim().toLowerCase();
+  const email = normEmail($("newAdmin").value);
   if (!email || !email.includes("@")) { $("adminMsg").textContent = "⚠️ メールアドレスを入力してください"; return; }
-  if (isAdminEmail(email, coAdmins)) { $("adminMsg").textContent = "すでに管理者です"; return; }
+  if (coAdmins.includes(email)) { $("adminMsg").textContent = "すでに管理者です"; return; }
   $("adminMsg").textContent = "追加中…";
   try {
-    await fs.setDoc(refs.metaAdmins, { emails: fs.arrayUnion(email) }, { merge: true });
+    await fs.updateDoc(refs.metaAdmins, { emails: fs.arrayUnion(email) });
     $("newAdmin").value = "";
     $("adminMsg").textContent = "✅ 追加しました";
   } catch (e) { $("adminMsg").textContent = "⚠️ " + (e.code || e.message); }
 }
 
 async function removeCoAdmin(email) {
+  if (email === owner) { alert("オーナーは削除できません。"); return; }
   if (!confirm(`${email} を管理者から外しますか？`)) return;
-  try { await fs.setDoc(refs.metaAdmins, { emails: fs.arrayRemove(email) }, { merge: true }); }
+  try { await fs.updateDoc(refs.metaAdmins, { emails: fs.arrayRemove(email) }); }
   catch (e) { $("adminMsg").textContent = "⚠️ " + (e.code || e.message); }
 }
 window.removeCoAdmin = removeCoAdmin;
@@ -108,16 +135,13 @@ window.removeCoAdmin = removeCoAdmin;
 function renderAdminPanel() {
   const list = $("adminList");
   if (!list) return;
-  const rows = [];
-  if (OWNER_EMAIL) rows.push(`<li><b>${esc(OWNER_EMAIL)}</b><span class="score">オーナー</span></li>`);
-  for (const e of coAdmins) {
-    if (e === OWNER_EMAIL) continue;
-    const canRemove = amOwner() || amAdmin();
-    rows.push(`<li><b>${esc(e)}</b>${
-      canRemove ? `<button class="ghost" style="margin-left:auto;width:auto;padding:6px 12px"
-        onclick="removeCoAdmin('${esc(e)}')">削除</button>` : '<span class="score">共同作成者</span>'}</li>`);
-  }
-  list.innerHTML = rows.join("");
+  list.innerHTML = coAdmins.map((e) => {
+    const isOwner = e === owner;
+    return `<li><b>${esc(e)}</b>${
+      isOwner ? '<span class="score">オーナー</span>'
+              : `<button class="ghost" style="margin-left:auto;width:auto;padding:6px 12px"
+                   onclick="removeCoAdmin('${esc(e)}')">削除</button>`}</li>`;
+  }).join("");
 }
 
 // =============================================================================
@@ -216,7 +240,6 @@ async function saveAndStart() {
     standings: null,
     revealIndex: null,
     hostUid: me ? me.uid : null,
-    hostEmail: me ? me.email : null,
     updatedAt: fs.serverTimestamp(),
   });
   await batch.commit();

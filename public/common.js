@@ -10,7 +10,6 @@ import * as FS from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firesto
 
 export const fs = FS; // Firestore の各関数をまとめて再エクスポート
 export const EVENT_ID = window.EVENT_ID || "main";
-export const OWNER_EMAIL = (window.OWNER_EMAIL || "").trim().toLowerCase();
 
 // ---- 設定未投入の検知 -------------------------------------------------------
 export const configReady =
@@ -64,21 +63,20 @@ export function googleSignIn() {
 
 export function signOutHost() { return signOut(auth); }
 
-// 共同作成者の許可リスト（Firestore: meta/admins.emails）を購読
-export function watchAdmins(cb) {
-  return FS.onSnapshot(refs.metaAdmins, (snap) => {
-    const emails = (snap.exists() && Array.isArray(snap.data().emails)) ? snap.data().emails : [];
-    cb(emails.map((e) => String(e).trim().toLowerCase()));
-  }, () => cb([]));
+// 管理者リスト（Firestore: meta/admins）を購読。
+// セキュリティルールにより「リストに載っている管理者だけ」が読み取れるため、
+// onData が呼ばれた＝自分は管理者、onError（権限なし/未作成）＝管理者ではない、を意味する。
+export function watchAdmins(onData, onError) {
+  return FS.onSnapshot(refs.metaAdmins,
+    (snap) => {
+      const d = snap.exists() ? snap.data() : {};
+      const emails = Array.isArray(d.emails) ? d.emails.map((e) => String(e).trim().toLowerCase()) : [];
+      onData({ exists: snap.exists(), emails, owner: (d.owner || "").toLowerCase() });
+    },
+    (err) => onError && onError(err));
 }
 
-// このメールが管理者（オーナー or 共同作成者）か判定
-export function isAdminEmail(email, coAdminEmails) {
-  const e = String(email || "").trim().toLowerCase();
-  if (!e) return false;
-  if (OWNER_EMAIL && e === OWNER_EMAIL) return true;
-  return (coAdminEmails || []).includes(e);
-}
+export const normEmail = (e) => String(e || "").trim().toLowerCase();
 
 // ---- 採点ロジック ----------------------------------------------------------
 // scoringMode: 'correct'（正解数のみ）/ 'speed'（正解＋早押し順で加点）

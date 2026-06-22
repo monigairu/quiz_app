@@ -2,24 +2,23 @@ rules_version = '2';
 // =============================================================================
 // Firestore セキュリティルール
 // -----------------------------------------------------------------------------
-// 認可モデル：
-//   - 主催者（作問・進行）  : Google ログイン済み かつ 管理者のみ書き込み可
-//   - 共同作成者            : meta/admins.emails に登録されたメール
-//   - 参加者（代表者）      : 匿名ログイン。読み取りと自分の回答・テーブル確保のみ
-//   - 正解(keys)            : 管理者しか読めない（参加者へ漏れない）
+// 認可モデル（メールアドレスはコード・ルールに一切ハードコードしません）：
+//   - 管理者リストは meta/admins ドキュメントの emails 配列で管理（owner を含む）
+//   - 管理者本人だけが meta/admins を読める（メール一覧を一般公開しない）
+//   - 主催者(作問・進行)・正解(keys)の読み書きは管理者のみ
+//   - 参加者(代表者)は匿名ログイン。読み取りと、自分の回答・テーブル確保のみ
 //
-// ★ 下の ownerEmail() を admins.js の OWNER_EMAIL と「同じ小文字メール」に
-//    変更してからデプロイしてください：
-//      npx firebase deploy --only firestore:rules
+// 初回セットアップ：
+//   オーナーがホスト画面で Google ログイン →「オーナーとして登録」を押すと、
+//   meta/admins が未作成のときに限り、自分を唯一のオーナーとして登録できます。
+//   URL を配布する前に必ずオーナー登録を済ませてください（先着で確定するため）。
+//
+//   デプロイ: npx firebase deploy --only firestore:rules
 // =============================================================================
 service cloud.firestore {
   match /databases/{database}/documents {
 
     function signedIn() { return request.auth != null; }
-
-    // ★ ここをオーナーの Google メール（小文字）に書き換える
-    function ownerEmail() { return "owner_google_email_here"; }
-
     function verifiedEmail() {
       return signedIn()
         && request.auth.token.email != null
@@ -27,20 +26,29 @@ service cloud.firestore {
     }
     function emailLower() { return request.auth.token.email.lower(); }
 
-    function adminList() {
-      return exists(/databases/$(database)/documents/meta/admins)
-        ? get(/databases/$(database)/documents/meta/admins).data.emails
-        : [];
+    function adminsExist() {
+      return exists(/databases/$(database)/documents/meta/admins);
+    }
+    function adminEmails() {
+      return get(/databases/$(database)/documents/meta/admins).data.emails;
     }
     function isAdmin() {
-      return verifiedEmail()
-        && ( emailLower() == ownerEmail() || emailLower() in adminList() );
+      return verifiedEmail() && adminsExist() && (emailLower() in adminEmails());
     }
 
-    // 共同作成者の許可リスト
+    // 管理者リスト（オーナー＋共同作成者）
     match /meta/admins {
-      allow read: if signedIn();
-      allow write: if isAdmin();
+      // 読めるのは「リストに載っている本人」だけ（＝管理者判定にも使う）
+      allow read: if verifiedEmail() && (emailLower() in resource.data.emails);
+      // 初回作成：未作成のときだけ、自分を唯一のオーナーとして登録できる
+      allow create: if verifiedEmail()
+        && request.resource.data.owner == emailLower()
+        && request.resource.data.emails == [emailLower()];
+      // 変更：既存の管理者のみ。オーナーは固定・保持必須
+      allow update: if isAdmin()
+        && request.resource.data.owner == resource.data.owner
+        && (resource.data.owner in request.resource.data.emails);
+      allow delete: if false;
     }
 
     match /events/{eventId} {
@@ -48,7 +56,7 @@ service cloud.firestore {
       allow read: if signedIn();
       allow write: if isAdmin();
 
-      // 問題文・選択肢：公開（読みは全員）、編集は管理者のみ
+      // 問題文・選択肢：読みは全員、編集は管理者のみ
       match /questions/{q} {
         allow read: if signedIn();
         allow write: if isAdmin();
