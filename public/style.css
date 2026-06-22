@@ -111,7 +111,8 @@ button + button { margin-top: 10px; }
 .choices.quiz4 > .choice:nth-child(4n+4)::before { content: "■ "; }
 
 /* 状態（4色より優先） */
-.choice.selected { outline: 4px solid #fff; outline-offset: 2px; }
+.choice.selected, .choice.mine { outline: 4px solid #fff; outline-offset: 2px; }
+.choice.mine { box-shadow: 0 0 0 4px rgba(255,255,255,.35), 0 4px 0 rgba(0,0,0,.18); }
 .choice.correct { background: var(--green) !important; box-shadow: 0 4px 0 #148a50 !important; color: #fff !important; }
 .choice.wrong   { background: #9aa0aa !important; box-shadow: 0 4px 0 #6b7280 !important; color: #fff !important; }
 

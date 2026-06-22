@@ -183,15 +183,16 @@ function renderQuestion(reveal) {
   }
   html += `<div class="card"><p class="q-text">${esc(q.text)}</p></div><div class="choices quiz4">`;
   q.choices.forEach((c, i) => {
+    const isMine = mine && mine.choice === i;
     let cls = "choice";
     if (reveal) {
       if (i === correctIdx) cls += " correct";                 // 正解を緑でハイライト
-      else if (mine && mine.choice === i) cls += " wrong";     // 自分の誤答を赤
-    } else if (mine && mine.choice === i) {
-      cls += " selected";
+      else if (isMine) cls += " wrong";                        // 自分の誤答を赤
     }
+    if (isMine) cls += " mine";                                // 自分の選択を枠で囲む（常時）
+    const badge = isMine ? '<span class="badge">あなたの回答</span>' : "";
     const disabled = reveal || locked ? "disabled" : "";
-    html += `<button class="${cls}" ${disabled} onclick="answer(${i})">${esc(c)}</button>`;
+    html += `<button class="${cls}" ${disabled} onclick="answer(${i})">${esc(c)}${badge}</button>`;
   });
   html += `</div>`;
 
