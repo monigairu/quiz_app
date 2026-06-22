@@ -6,12 +6,12 @@
 <title>会場表示</title>
 <link rel="stylesheet" href="/style.css" />
 <style>
-  body { display: flex; align-items: center; justify-content: center; min-height: 100vh; }
-  .stage { max-width: 1100px; width: 100%; padding: 30px; }
-  .stage .q-text { font-size: 3rem; text-align: center; }
-  .stage .choice { font-size: 1.6rem; pointer-events: none; }
-  .stage .standings li { font-size: 1.6rem; }
-  .stage .big { font-size: 5rem; }
+  body { display:flex; align-items:center; justify-content:center; min-height:100vh; }
+  .stage { max-width:1100px; width:100%; padding:30px; }
+  .stage .q-text { font-size:3rem; text-align:center; }
+  .stage .choice { font-size:1.6rem; pointer-events:none; }
+  .stage .standings li { font-size:1.8rem; }
+  .stage .big { font-size:5rem; }
 </style>
 </head>
 <body>
@@ -20,56 +20,7 @@
   <div id="content" class="center"><h1 id="title">クイズ大会</h1><p class="muted">開始までお待ちください</p></div>
 </div>
 
-<script src="/socket.io/socket.io.js"></script>
-<script>
-const socket = io();
-const $ = (id) => document.getElementById(id);
-let st = null;
-
-socket.on('connect', () => socket.emit('host:join'));
-socket.on('hostState', (s) => { st = s; render(); });
-
-function render() {
-  if (!st) return;
-  $('title').textContent = st.title;
-  $('progress').textContent = st.index >= 0 ? `第${st.index + 1}問 / ${st.totalQuestions}` : `参加 ${st.participantCount}人`;
-  const c = $('content');
-
-  if (st.phase === 'lobby') {
-    c.innerHTML = `<h1>${escapeHtml(st.title)}</h1><p class="big">📣</p><p>${st.participantCount}人が参加中</p>`;
-    return;
-  }
-  if ((st.phase === 'question' || st.phase === 'reveal') && st.question) {
-    const q = st.question;
-    let html = `<p class="q-text">${escapeHtml(q.q)}</p><div class="choices">`;
-    q.choices.forEach((ch, i) => {
-      let cls = 'choice';
-      if (st.phase === 'reveal' && i === q.answer) cls += ' correct';
-      const n = st.stats.counts[i] || 0;
-      html += `<div class="${cls}">${escapeHtml(ch)}${st.phase === 'reveal' ? ` <span class="badge">${n}人</span>` : ''}</div>`;
-    });
-    html += `</div>`;
-    if (st.phase === 'question') html += `<p class="muted">回答 ${st.stats.answered}/${st.stats.total}人</p>`;
-    c.innerHTML = html;
-    return;
-  }
-  if (st.phase === 'finished') {
-    let html = `<p class="big">🏆 最終結果</p><ol class="standings">`;
-    st.standings.forEach((g, i) => {
-      const medal = ['🥇', '🥈', '🥉'][i] || (i + 1);
-      const top = i < 3 ? `top${i + 1}` : '';
-      html += `<li class="${top}"><span class="rank">${medal}</span><b>${escapeHtml(g.group)}</b>
-        <span class="score">${g.score}点（平均${g.avg}）</span></li>`;
-    });
-    html += `</ol>`;
-    c.innerHTML = html;
-  }
-}
-
-function escapeHtml(str) {
-  return String(str).replace(/[&<>"']/g, (m) =>
-    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
-}
-</script>
+<script src="/firebase-config.js"></script>
+<script type="module" src="/display.js"></script>
 </body>
 </html>

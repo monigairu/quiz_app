@@ -1,15 +1,10 @@
 {
   "name": "table-quiz-app",
-  "version": "1.0.0",
-  "description": "懇親会向け テーブル対抗 リアルタイムクイズアプリ",
-  "main": "server.js",
-  "type": "module",
+  "version": "2.0.0",
+  "description": "懇親会向け テーブル対抗 リアルタイムクイズアプリ（Firebase）",
+  "private": true,
   "scripts": {
-    "start": "node server.js",
-    "dev": "node --watch server.js"
-  },
-  "dependencies": {
-    "express": "^4.19.2",
-    "socket.io": "^4.7.5"
+    "serve": "npx firebase emulators:start --only hosting",
+    "deploy": "npx firebase deploy"
   }
 }

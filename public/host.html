@@ -10,119 +10,75 @@
 <div class="wrap wide">
   <h1>🎛️ 主催者コントロール <span class="pill" id="phasePill">―</span></h1>
 
-  <div class="grid2">
-    <!-- 操作パネル -->
+  <!-- ===== 準備（作問）画面 ===== -->
+  <section id="setup">
     <div class="card">
-      <h2 id="title" style="margin-top:0">クイズ大会</h2>
-      <p class="muted" id="meta"></p>
+      <h2 style="margin-top:0">クイズの設定</h2>
+      <label>タイトル</label>
+      <input id="title" value="懇親会クイズ大会" maxlength="40" />
+
+      <label>採点方式</label>
       <div class="row">
-        <button id="nextBtn" class="green">▶ 次の問題</button>
-        <button id="revealBtn" class="ghost">⏱ 締切＆正解発表</button>
+        <label class="radio"><input type="radio" name="scoring" value="correct" checked> 正解数のみ</label>
+        <label class="radio"><input type="radio" name="scoring" value="speed"> 正解＋早押し順で加点</label>
       </div>
-      <div class="row" style="margin-top:10px">
-        <button id="finishBtn">🏆 最終結果を発表</button>
-      </div>
-      <div class="row" style="margin-top:10px">
-        <button id="reloadBtn" class="ghost">↻ 問題を再読込</button>
-        <button id="resetBtn" class="danger">⟲ 最初からやり直す</button>
-      </div>
-      <p class="muted" style="margin-top:14px">参加者URL: <b id="joinUrl"></b><br>会場表示URL: <b id="dispUrl"></b></p>
+
+      <label>テーブル（グループ）名 ― 1行に1つ</label>
+      <textarea id="tables" rows="5" placeholder="Aテーブル&#10;Bテーブル&#10;Cテーブル"></textarea>
     </div>
 
-    <!-- 現在の問題＆回答状況 -->
     <div class="card">
-      <h3 style="margin-top:0">現在の状況</h3>
-      <div id="liveArea"><p class="muted">「次の問題」で開始します。</p></div>
+      <h3 style="margin-top:0">問題</h3>
+      <div id="questions"></div>
+      <button class="ghost" id="addQ">＋ 問題を追加</button>
     </div>
-  </div>
 
-  <!-- 集計（テーブル別） -->
-  <div class="card">
-    <h3 style="margin-top:0">📊 テーブル別 途中経過</h3>
-    <ol class="standings" id="standings"></ol>
-  </div>
+    <button class="green" id="saveBtn">💾 保存して受付を開始</button>
+    <p class="muted" id="setupMsg"></p>
+  </section>
+
+  <!-- ===== 進行コントロール画面 ===== -->
+  <section id="control" style="display:none">
+    <div class="grid2">
+      <div class="card">
+        <h2 id="ctlTitle" style="margin-top:0"></h2>
+        <p class="muted" id="ctlMeta"></p>
+        <div class="row">
+          <button id="nextBtn" class="green">▶ 次の問題</button>
+          <button id="closeBtn" class="ghost">⏱ 締切＆採点</button>
+        </div>
+        <div class="row" style="margin-top:10px">
+          <button id="finishBtn">🏆 最終結果を発表</button>
+        </div>
+        <div class="row" style="margin-top:10px">
+          <button id="backBtn" class="ghost">← 作問に戻る</button>
+          <button id="resetBtn" class="danger">⟲ 得点リセット</button>
+        </div>
+        <p class="muted" style="margin-top:14px">
+          参加用URL: <b id="joinUrl"></b><br>会場表示: <b id="dispUrl"></b>
+        </p>
+      </div>
+
+      <div class="card">
+        <h3 style="margin-top:0">現在の問題・回答状況</h3>
+        <div id="liveArea"><p class="muted">「次の問題」で開始します。</p></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3 style="margin-top:0">🪑 テーブルの参加状況</h3>
+      <p class="muted">「解放」を押すと枠が空き、代表者の交代ができます。</p>
+      <div id="tableStatus"></div>
+    </div>
+
+    <div class="card" id="standingsCard" style="display:none">
+      <h3 style="margin-top:0">🏆 最終順位</h3>
+      <ol class="standings" id="standings"></ol>
+    </div>
+  </section>
 </div>
 
-<script src="/socket.io/socket.io.js"></script>
-<script>
-const socket = io();
-const $ = (id) => document.getElementById(id);
-let st = null;
-
-socket.on('connect', () => socket.emit('host:join'));
-socket.on('hostState', (s) => { st = s; render(); });
-
-$('nextBtn').onclick = () => socket.emit('host:next');
-$('revealBtn').onclick = () => socket.emit('host:reveal');
-$('finishBtn').onclick = () => { if (confirm('最終結果を発表しますか？')) socket.emit('host:finish'); };
-$('reloadBtn').onclick = () => { if (confirm('questions.json を再読込し、得点をリセットします。よろしいですか？')) socket.emit('host:reload'); };
-$('resetBtn').onclick = () => { if (confirm('最初からやり直します（得点リセット）。よろしいですか？')) socket.emit('host:reset'); };
-
-$('joinUrl').textContent = location.origin + '/';
-$('dispUrl').textContent = location.origin + '/display';
-
-const phaseLabel = { lobby: '受付中', question: '出題中', reveal: '正解発表', finished: '結果発表' };
-
-function render() {
-  if (!st) return;
-  $('title').textContent = st.title;
-  $('phasePill').textContent = phaseLabel[st.phase] || st.phase;
-  $('meta').textContent = `参加 ${st.participantCount}人 / 全${st.totalQuestions}問` +
-    (st.index >= 0 ? `（第${st.index + 1}問）` : '');
-
-  // ボタン活性制御
-  $('nextBtn').disabled = (st.index + 1 >= st.totalQuestions && st.phase !== 'lobby') ||
-    st.phase === 'question';
-  $('nextBtn').textContent = st.index < 0 ? '▶ クイズを開始' : '▶ 次の問題';
-  $('revealBtn').disabled = st.phase !== 'question';
-
-  renderLive();
-  renderStandings();
-}
-
-function renderLive() {
-  const a = $('liveArea');
-  if (!st.question || st.phase === 'lobby' || st.phase === 'finished') {
-    a.innerHTML = st.phase === 'finished'
-      ? '<p class="big center">🏆 結果発表中</p>'
-      : `<p class="muted">受付中… ${st.participantCount}人が参加しています。</p>`;
-    return;
-  }
-  const q = st.question;
-  const stt = st.stats;
-  let html = `<p class="q-text">${escapeHtml(q.q)}</p>`;
-  html += `<p class="muted">回答 ${stt.answered}/${stt.total}人</p>`;
-  q.choices.forEach((c, i) => {
-    const n = stt.counts[i] || 0;
-    const pct = stt.total ? Math.round((n / stt.total) * 100) : 0;
-    const correct = st.phase === 'reveal' && i === q.answer;
-    html += `<div class="statrow">
-      <div>${correct ? '✅ ' : ''}<b>${escapeHtml(c)}</b> <span class="muted">${n}人</span></div>
-      <div class="bar"><span style="width:${pct}%;${correct ? 'background:#22c55e' : ''}"></span></div>
-    </div>`;
-  });
-  if (st.phase === 'reveal') {
-    html += `<p class="center" style="margin-top:10px"><span class="pill">正解：${escapeHtml(q.choices[q.answer])}</span></p>`;
-  }
-  a.innerHTML = html;
-}
-
-function renderStandings() {
-  const ol = $('standings');
-  if (!st.standings.length) { ol.innerHTML = '<p class="muted">まだ集計はありません。</p>'; return; }
-  ol.innerHTML = st.standings.map((g, i) => {
-    const medal = ['🥇', '🥈', '🥉'][i] || (i + 1);
-    const top = i < 3 ? `top${i + 1}` : '';
-    return `<li class="${top}"><span class="rank">${medal}</span>
-      <div><b>${escapeHtml(g.group)}</b><br><span class="muted">${g.members}人・平均${g.avg}点</span></div>
-      <span class="score">${g.score}点</span></li>`;
-  }).join('');
-}
-
-function escapeHtml(str) {
-  return String(str).replace(/[&<>"']/g, (m) =>
-    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
-}
-</script>
+<script src="/firebase-config.js"></script>
+<script type="module" src="/host.js"></script>
 </body>
 </html>

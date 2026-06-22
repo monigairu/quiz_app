@@ -27,10 +27,18 @@ h1 { font-size: 1.4rem; margin: .2em 0; }
   box-shadow: 0 6px 20px rgba(0,0,0,.25);
 }
 input, button { font-size: 1rem; font-family: inherit; }
-input {
+input, textarea {
   width: 100%; padding: 14px; border-radius: 12px; border: 1px solid #334155;
   background: #0b1220; color: var(--text); margin: 6px 0 14px;
 }
+textarea { font-family: inherit; resize: vertical; }
+label { font-weight: 700; font-size: .9rem; color: var(--muted); display: block; }
+label.radio { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; color: var(--text); }
+label.radio input, .choice-edit input[type="radio"] { width: auto; margin: 0; }
+.choice-edit { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.choice-edit .c-input { margin: 0; }
+.qrow .q-text-input { margin: 0; }
+a { color: var(--accent); }
 button {
   cursor: pointer; border: none; border-radius: 12px; padding: 14px 18px;
   background: var(--accent); color: #fff; font-weight: 700; width: 100%;
