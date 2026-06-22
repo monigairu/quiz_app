@@ -2,7 +2,8 @@
 // 主催者画面：作問・進行・採点・集計
 // =============================================================================
 import {
-  fs, db, auth, refs, ensureAuth, gradeQuestion, guardConfig,
+  fs, db, refs, gradeQuestion, guardConfig,
+  watchAuth, googleSignIn, signOutHost, watchAdmins, isAdminEmail, OWNER_EMAIL,
   PHASE, phaseLabel, $, esc, ms,
 } from "/common.js";
 
@@ -14,14 +15,109 @@ let questions = [];            // [{order, text, choices[]}]
 let keys = new Map();          // order -> answerIndex
 let tables = [];               // [{id, name, claimedByUid, claimedAt}]
 let answers = [];              // [{tableId, qIndex, choice, answeredAt, correct, points}]
-let hostUid = null;
 
-async function init() {
-  hostUid = (await ensureAuth()).uid;
+// ---- 認証・認可 ------------------------------------------------------------
+let me = null;                 // 現在の Google ユーザー
+let coAdmins = [];             // 共同作成者メール一覧
+let subscribed = false;
+let setupBuilt = false;
+
+let adminsStarted = false;
+
+function init() {
+  $("googleLogin").onclick = () => googleSignIn().catch((e) => {
+    $("gateMsg").textContent = "ログインに失敗しました：" + (e.code || e.message);
+  });
+  $("logoutBtn").onclick = () => signOutHost();
+  // 管理者リストの購読は、Google ログイン後（読み取り権限を得てから）開始する
+  watchAuth((user) => {
+    me = user;
+    if (me && !me.isAnonymous && !adminsStarted) {
+      adminsStarted = true;
+      watchAdmins((emails) => { coAdmins = emails; renderGate(); renderAdminPanel(); });
+    }
+    renderGate();
+  });
+}
+
+const amAdmin = () => me && !me.isAnonymous && isAdminEmail(me.email, coAdmins);
+const amOwner = () => me && OWNER_EMAIL && String(me.email).toLowerCase() === OWNER_EMAIL;
+
+function renderGate() {
+  const authed = me && !me.isAnonymous;
+  if (amAdmin()) {
+    $("gate").style.display = "none";
+    $("workspace").style.display = "block";
+    $("userEmail").textContent = me.email;
+    $("roleBadge").textContent = amOwner() ? "オーナー" : "共同作成者";
+    if (!subscribed) { bootWorkspace(); subscribed = true; }
+    renderAdminPanel();
+    return;
+  }
+  // 未ログイン or 権限なし
+  $("gate").style.display = "block";
+  $("workspace").style.display = "none";
+  if (authed) {
+    $("gateMsg").innerHTML =
+      `このアカウント（<b>${esc(me.email)}</b>）には作成権限がありません。<br>` +
+      `オーナーに共同作成者として追加してもらってください。` +
+      `<br><button class="ghost" style="max-width:240px;margin:12px auto 0" id="switchAcc">別のアカウントでログイン</button>`;
+    const sw = $("switchAcc");
+    if (sw) sw.onclick = () => signOutHost().then(() => googleSignIn());
+  } else {
+    $("gateMsg").textContent = "";
+  }
+}
+
+function bootWorkspace() {
   buildSetupUI();
   subscribe();
+  bindAdminPanel();
   $("joinUrl").textContent = location.origin + "/";
   $("dispUrl").textContent = location.origin + "/display";
+}
+
+// ---- 管理者設定パネル ------------------------------------------------------
+function bindAdminPanel() {
+  $("adminToggle").onclick = () => {
+    const p = $("adminPanel");
+    p.style.display = p.style.display === "none" ? "block" : "none";
+  };
+  $("addAdmin").onclick = addCoAdmin;
+}
+
+async function addCoAdmin() {
+  const email = $("newAdmin").value.trim().toLowerCase();
+  if (!email || !email.includes("@")) { $("adminMsg").textContent = "⚠️ メールアドレスを入力してください"; return; }
+  if (isAdminEmail(email, coAdmins)) { $("adminMsg").textContent = "すでに管理者です"; return; }
+  $("adminMsg").textContent = "追加中…";
+  try {
+    await fs.setDoc(refs.metaAdmins, { emails: fs.arrayUnion(email) }, { merge: true });
+    $("newAdmin").value = "";
+    $("adminMsg").textContent = "✅ 追加しました";
+  } catch (e) { $("adminMsg").textContent = "⚠️ " + (e.code || e.message); }
+}
+
+async function removeCoAdmin(email) {
+  if (!confirm(`${email} を管理者から外しますか？`)) return;
+  try { await fs.setDoc(refs.metaAdmins, { emails: fs.arrayRemove(email) }, { merge: true }); }
+  catch (e) { $("adminMsg").textContent = "⚠️ " + (e.code || e.message); }
+}
+window.removeCoAdmin = removeCoAdmin;
+
+function renderAdminPanel() {
+  const list = $("adminList");
+  if (!list) return;
+  const rows = [];
+  if (OWNER_EMAIL) rows.push(`<li><b>${esc(OWNER_EMAIL)}</b><span class="score">オーナー</span></li>`);
+  for (const e of coAdmins) {
+    if (e === OWNER_EMAIL) continue;
+    const canRemove = amOwner() || amAdmin();
+    rows.push(`<li><b>${esc(e)}</b>${
+      canRemove ? `<button class="ghost" style="margin-left:auto;width:auto;padding:6px 12px"
+        onclick="removeCoAdmin('${esc(e)}')">削除</button>` : '<span class="score">共同作成者</span>'}</li>`);
+  }
+  list.innerHTML = rows.join("");
 }
 
 // =============================================================================
@@ -118,7 +214,9 @@ async function saveAndStart() {
     currentIndex: -1,
     questionCount: form.qs.length,
     standings: null,
-    hostUid,
+    revealIndex: null,
+    hostUid: me ? me.uid : null,
+    hostEmail: me ? me.email : null,
     updatedAt: fs.serverTimestamp(),
   });
   await batch.commit();
@@ -162,16 +260,16 @@ function bindControls() {
 async function nextQuestion() {
   const next = (ev.currentIndex ?? -1) + 1;
   if (next >= ev.questionCount) return;
-  await fs.updateDoc(refs.event, { phase: PHASE.QUESTION, currentIndex: next });
+  await fs.updateDoc(refs.event, { phase: PHASE.QUESTION, currentIndex: next, revealIndex: null });
 }
 
 async function closeAndGrade() {
   if (ev.phase !== PHASE.QUESTION) return;
   const idx = ev.currentIndex;
-  // まず締切（参加者の回答を止める）
-  await fs.updateDoc(refs.event, { phase: PHASE.REVEAL });
-
   const answerIndex = keys.get(idx);
+  // 締切（参加者の回答を止める）＋ 会場表示用に正解インデックスを公開
+  await fs.updateDoc(refs.event, { phase: PHASE.REVEAL, revealIndex: answerIndex ?? null });
+
   const forThis = answers.filter((a) => a.qIndex === idx);
   const correctEntries = forThis
     .filter((a) => a.choice === answerIndex)

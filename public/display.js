@@ -3,7 +3,7 @@
 // =============================================================================
 import { fs, refs, ensureAuth, guardConfig, PHASE, $, esc } from "/common.js";
 
-let ev = null, questions = [], tables = [], keys = new Map(), answers = [];
+let ev = null, questions = [], tables = [], answers = [];
 
 if (guardConfig()) init();
 
@@ -12,9 +12,6 @@ async function init() {
   fs.onSnapshot(refs.event, (s) => { ev = s.exists() ? s.data() : null; render(); });
   fs.onSnapshot(refs.questions, (s) => {
     questions = s.docs.map((d) => d.data()).sort((a, b) => a.order - b.order); render();
-  });
-  fs.onSnapshot(refs.keys, (s) => {
-    keys = new Map(s.docs.map((d) => [d.data().order, d.data().answerIndex])); render();
   });
   fs.onSnapshot(refs.tables, (s) => { tables = s.docs.map((d) => d.data()); render(); });
   fs.onSnapshot(refs.answers, (s) => { answers = s.docs.map((d) => d.data()); render(); });
@@ -37,7 +34,7 @@ function render() {
     const q = questions[ev.currentIndex];
     if (!q) { c.innerHTML = "―"; return; }
     const forThis = answers.filter((a) => a.qIndex === ev.currentIndex);
-    const answerIndex = keys.get(ev.currentIndex);
+    const answerIndex = ev.phase === PHASE.REVEAL ? ev.revealIndex : null;
     let html = `<p class="q-text">${esc(q.text)}</p><div class="choices">`;
     q.choices.forEach((ch, i) => {
       const correct = ev.phase === PHASE.REVEAL && i === answerIndex;

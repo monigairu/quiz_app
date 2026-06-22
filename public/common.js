@@ -4,11 +4,13 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import {
   getAuth, signInAnonymously, onAuthStateChanged,
+  GoogleAuthProvider, signInWithPopup, signOut,
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import * as FS from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 export const fs = FS; // Firestore の各関数をまとめて再エクスポート
 export const EVENT_ID = window.EVENT_ID || "main";
+export const OWNER_EMAIL = (window.OWNER_EMAIL || "").trim().toLowerCase();
 
 // ---- 設定未投入の検知 -------------------------------------------------------
 export const configReady =
@@ -39,15 +41,43 @@ export const refs = configReady ? {
   keyDoc: (i) => FS.doc(db, "events", EVENT_ID, "keys", "q" + i),
   tableDoc: (id) => FS.doc(db, "events", EVENT_ID, "tables", id),
   answerDoc: (tableId, i) => FS.doc(db, "events", EVENT_ID, "answers", tableId + "_" + i),
+  metaAdmins: FS.doc(db, "meta", "admins"), // 共同作成者の許可リスト
 } : null;
 
-// ---- 認証（匿名ログイン）---------------------------------------------------
+// ---- 認証：参加者（匿名ログイン）-------------------------------------------
 export function ensureAuth() {
   return new Promise((resolve, reject) => {
     if (!configReady) return reject(new Error("Firebase 未設定"));
     onAuthStateChanged(auth, (user) => { if (user) resolve(user); });
     signInAnonymously(auth).catch(reject);
   });
+}
+
+// ---- 認証：主催者（Google ログイン）---------------------------------------
+export function watchAuth(cb) { return onAuthStateChanged(auth, cb); }
+
+export function googleSignIn() {
+  const provider = new GoogleAuthProvider();
+  provider.setCustomParameters({ prompt: "select_account" });
+  return signInWithPopup(auth, provider);
+}
+
+export function signOutHost() { return signOut(auth); }
+
+// 共同作成者の許可リスト（Firestore: meta/admins.emails）を購読
+export function watchAdmins(cb) {
+  return FS.onSnapshot(refs.metaAdmins, (snap) => {
+    const emails = (snap.exists() && Array.isArray(snap.data().emails)) ? snap.data().emails : [];
+    cb(emails.map((e) => String(e).trim().toLowerCase()));
+  }, () => cb([]));
+}
+
+// このメールが管理者（オーナー or 共同作成者）か判定
+export function isAdminEmail(email, coAdminEmails) {
+  const e = String(email || "").trim().toLowerCase();
+  if (!e) return false;
+  if (OWNER_EMAIL && e === OWNER_EMAIL) return true;
+  return (coAdminEmails || []).includes(e);
 }
 
 // ---- 採点ロジック ----------------------------------------------------------

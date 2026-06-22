@@ -2,20 +2,73 @@ rules_version = '2';
 // =============================================================================
 // Firestore セキュリティルール
 // -----------------------------------------------------------------------------
-// 現在 Firebase コンソールは「テストモード」（誰でも読み書き可・期限付き）に
-// なっています。本番（懇親会当日）の前に、このルールをデプロイして差し替えて
-// ください。匿名ログイン済みのユーザーのみ読み書きを許可します。
+// 認可モデル：
+//   - 主催者（作問・進行）  : Google ログイン済み かつ 管理者のみ書き込み可
+//   - 共同作成者            : meta/admins.emails に登録されたメール
+//   - 参加者（代表者）      : 匿名ログイン。読み取りと自分の回答・テーブル確保のみ
+//   - 正解(keys)            : 管理者しか読めない（参加者へ漏れない）
 //
-//   デプロイ: npx firebase deploy --only firestore:rules
-//
-// ※ 主催者と参加者を厳密に分離するには Cloud Functions やカスタムクレームが
-//    必要ですが、Spark プラン・社内の懇親会用途では「認証済みのみ許可」で
-//    十分実用的です。
+// ★ 下の ownerEmail() を admins.js の OWNER_EMAIL と「同じ小文字メール」に
+//    変更してからデプロイしてください：
+//      npx firebase deploy --only firestore:rules
 // =============================================================================
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /events/{eventId}/{document=**} {
-      allow read, write: if request.auth != null;
+
+    function signedIn() { return request.auth != null; }
+
+    // ★ ここをオーナーの Google メール（小文字）に書き換える
+    function ownerEmail() { return "owner_google_email_here"; }
+
+    function verifiedEmail() {
+      return signedIn()
+        && request.auth.token.email != null
+        && request.auth.token.email_verified == true;
+    }
+    function emailLower() { return request.auth.token.email.lower(); }
+
+    function adminList() {
+      return exists(/databases/$(database)/documents/meta/admins)
+        ? get(/databases/$(database)/documents/meta/admins).data.emails
+        : [];
+    }
+    function isAdmin() {
+      return verifiedEmail()
+        && ( emailLower() == ownerEmail() || emailLower() in adminList() );
+    }
+
+    // 共同作成者の許可リスト
+    match /meta/admins {
+      allow read: if signedIn();
+      allow write: if isAdmin();
+    }
+
+    match /events/{eventId} {
+      // イベント本体：読みは参加者も可、書きは管理者のみ
+      allow read: if signedIn();
+      allow write: if isAdmin();
+
+      // 問題文・選択肢：公開（読みは全員）、編集は管理者のみ
+      match /questions/{q} {
+        allow read: if signedIn();
+        allow write: if isAdmin();
+      }
+      // 正解キー：管理者のみ（参加者には見えない）
+      match /keys/{k} {
+        allow read, write: if isAdmin();
+      }
+      // テーブル：読みは全員。作成/削除は管理者、確保(update)は参加者も可
+      match /tables/{t} {
+        allow read: if signedIn();
+        allow create, delete: if isAdmin();
+        allow update: if signedIn();
+      }
+      // 回答：読みは全員。作成は参加者、採点更新・リセット削除は管理者のみ
+      match /answers/{a} {
+        allow read: if signedIn();
+        allow create: if signedIn();
+        allow update, delete: if isAdmin();
+      }
     }
   }
 }

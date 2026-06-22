@@ -10,75 +10,109 @@
 <div class="wrap wide">
   <h1>🎛️ 主催者コントロール <span class="pill" id="phasePill">―</span></h1>
 
-  <!-- ===== 準備（作問）画面 ===== -->
-  <section id="setup">
-    <div class="card">
-      <h2 style="margin-top:0">クイズの設定</h2>
-      <label>タイトル</label>
-      <input id="title" value="懇親会クイズ大会" maxlength="40" />
-
-      <label>採点方式</label>
-      <div class="row">
-        <label class="radio"><input type="radio" name="scoring" value="correct" checked> 正解数のみ</label>
-        <label class="radio"><input type="radio" name="scoring" value="speed"> 正解＋早押し順で加点</label>
-      </div>
-
-      <label>テーブル（グループ）名 ― 1行に1つ</label>
-      <textarea id="tables" rows="5" placeholder="Aテーブル&#10;Bテーブル&#10;Cテーブル"></textarea>
+  <!-- ===== ログイン / 権限ゲート ===== -->
+  <section id="gate">
+    <div class="card center" id="loginCard">
+      <p class="big">🔒</p>
+      <p>作問・進行は <b>許可されたGoogleアカウント</b> のみ行えます。</p>
+      <button class="green" id="googleLogin" style="max-width:320px;margin:0 auto">Googleでログイン</button>
+      <p class="muted" id="gateMsg" style="margin-top:14px"></p>
     </div>
-
-    <div class="card">
-      <h3 style="margin-top:0">問題</h3>
-      <div id="questions"></div>
-      <button class="ghost" id="addQ">＋ 問題を追加</button>
-    </div>
-
-    <button class="green" id="saveBtn">💾 保存して受付を開始</button>
-    <p class="muted" id="setupMsg"></p>
   </section>
 
-  <!-- ===== 進行コントロール画面 ===== -->
-  <section id="control" style="display:none">
-    <div class="grid2">
+  <!-- ===== 作業ワークスペース（管理者のみ表示）===== -->
+  <section id="workspace" style="display:none">
+    <div class="card" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+      <span class="pill">👤 <b id="userEmail"></b></span>
+      <span class="pill" id="roleBadge"></span>
+      <button class="ghost" id="adminToggle" style="margin-left:auto;width:auto;padding:8px 14px">管理者設定</button>
+      <button class="ghost" id="logoutBtn" style="width:auto;padding:8px 14px">ログアウト</button>
+    </div>
+
+    <!-- 管理者設定パネル -->
+    <div class="card" id="adminPanel" style="display:none">
+      <h3 style="margin-top:0">👥 管理者（共同作成者）</h3>
+      <p class="muted">許可した Google アカウントのみワークスペースに入れます。</p>
+      <ul class="standings" id="adminList" style="margin-bottom:12px"></ul>
+      <label>共同作成者を追加（Googleメールアドレス）</label>
+      <div class="row">
+        <input id="newAdmin" placeholder="例）cocreator@gmail.com" maxlength="120" />
+        <button id="addAdmin" style="flex:0 0 auto;width:auto;padding:14px 18px">追加</button>
+      </div>
+      <p class="muted" id="adminMsg"></p>
+    </div>
+
+    <!-- ===== 準備（作問）画面 ===== -->
+    <section id="setup">
       <div class="card">
-        <h2 id="ctlTitle" style="margin-top:0"></h2>
-        <p class="muted" id="ctlMeta"></p>
+        <h2 style="margin-top:0">クイズの設定</h2>
+        <label>タイトル</label>
+        <input id="title" value="懇親会クイズ大会" maxlength="40" />
+
+        <label>採点方式</label>
         <div class="row">
-          <button id="nextBtn" class="green">▶ 次の問題</button>
-          <button id="closeBtn" class="ghost">⏱ 締切＆採点</button>
+          <label class="radio"><input type="radio" name="scoring" value="correct" checked> 正解数のみ</label>
+          <label class="radio"><input type="radio" name="scoring" value="speed"> 正解＋早押し順で加点</label>
         </div>
-        <div class="row" style="margin-top:10px">
-          <button id="finishBtn">🏆 最終結果を発表</button>
-        </div>
-        <div class="row" style="margin-top:10px">
-          <button id="backBtn" class="ghost">← 作問に戻る</button>
-          <button id="resetBtn" class="danger">⟲ 得点リセット</button>
-        </div>
-        <p class="muted" style="margin-top:14px">
-          参加用URL: <b id="joinUrl"></b><br>会場表示: <b id="dispUrl"></b>
-        </p>
+
+        <label>テーブル（グループ）名 ― 1行に1つ</label>
+        <textarea id="tables" rows="5" placeholder="Aテーブル&#10;Bテーブル&#10;Cテーブル"></textarea>
       </div>
 
       <div class="card">
-        <h3 style="margin-top:0">現在の問題・回答状況</h3>
-        <div id="liveArea"><p class="muted">「次の問題」で開始します。</p></div>
+        <h3 style="margin-top:0">問題</h3>
+        <div id="questions"></div>
+        <button class="ghost" id="addQ">＋ 問題を追加</button>
       </div>
-    </div>
 
-    <div class="card">
-      <h3 style="margin-top:0">🪑 テーブルの参加状況</h3>
-      <p class="muted">「解放」を押すと枠が空き、代表者の交代ができます。</p>
-      <div id="tableStatus"></div>
-    </div>
+      <button class="green" id="saveBtn">💾 保存して受付を開始</button>
+      <p class="muted" id="setupMsg"></p>
+    </section>
 
-    <div class="card" id="standingsCard" style="display:none">
-      <h3 style="margin-top:0">🏆 最終順位</h3>
-      <ol class="standings" id="standings"></ol>
-    </div>
+    <!-- ===== 進行コントロール画面 ===== -->
+    <section id="control" style="display:none">
+      <div class="grid2">
+        <div class="card">
+          <h2 id="ctlTitle" style="margin-top:0"></h2>
+          <p class="muted" id="ctlMeta"></p>
+          <div class="row">
+            <button id="nextBtn" class="green">▶ 次の問題</button>
+            <button id="closeBtn" class="ghost">⏱ 締切＆採点</button>
+          </div>
+          <div class="row" style="margin-top:10px">
+            <button id="finishBtn">🏆 最終結果を発表</button>
+          </div>
+          <div class="row" style="margin-top:10px">
+            <button id="backBtn" class="ghost">← 作問に戻る</button>
+            <button id="resetBtn" class="danger">⟲ 得点リセット</button>
+          </div>
+          <p class="muted" style="margin-top:14px">
+            参加用URL: <b id="joinUrl"></b><br>会場表示: <b id="dispUrl"></b>
+          </p>
+        </div>
+
+        <div class="card">
+          <h3 style="margin-top:0">現在の問題・回答状況</h3>
+          <div id="liveArea"><p class="muted">「次の問題」で開始します。</p></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3 style="margin-top:0">🪑 テーブルの参加状況</h3>
+        <p class="muted">「解放」を押すと枠が空き、代表者の交代ができます。</p>
+        <div id="tableStatus"></div>
+      </div>
+
+      <div class="card" id="standingsCard" style="display:none">
+        <h3 style="margin-top:0">🏆 最終順位</h3>
+        <ol class="standings" id="standings"></ol>
+      </div>
+    </section>
   </section>
 </div>
 
 <script src="/firebase-config.js"></script>
+<script src="/admins.js"></script>
 <script type="module" src="/host.js"></script>
 </body>
 </html>
