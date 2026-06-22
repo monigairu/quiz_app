@@ -148,7 +148,12 @@ function renderAdminPanel() {
 // 1. 作問 UI
 // =============================================================================
 function buildSetupUI() {
-  $("addQ").onclick = () => addQuestionRow();
+  $("addQ").onclick = () => {
+    const row = addQuestionRow();
+    scheduleSaveDraft();
+    row.scrollIntoView({ behavior: "smooth", block: "center" });
+    row.querySelector(".q-text-input").focus();
+  };
   $("saveBtn").onclick = saveAndStart;
   $("clearDraft").onclick = clearDraft;
   buildTableCountSelect();
@@ -235,30 +240,77 @@ function buildTableCountSelect() {
   };
 }
 
-function addQuestionRow(data) {
+function addQuestionRow(data, afterNode) {
   const wrap = document.createElement("div");
   wrap.className = "card qrow";
   const gid = "g" + Math.random().toString(36).slice(2, 8);
   wrap.innerHTML = `
-    <div class="row" style="align-items:center">
-      <input class="q-text-input" placeholder="問題文" maxlength="120" />
-      <button class="danger del" style="flex:0 0 auto;width:auto;padding:10px 14px">削除</button>
+    <div class="qrow-head">
+      <span class="pill qnum">問題</span>
+      <div class="qrow-actions">
+        <button class="ghost up" title="上へ">↑</button>
+        <button class="ghost down" title="下へ">↓</button>
+        <button class="ghost dup" title="複製">複製</button>
+        <button class="danger del" title="削除">削除</button>
+      </div>
     </div>
-    <p class="muted" style="margin:8px 0 2px">選択肢（2〜4個・正解を選択）</p>
+    <input class="q-text-input" placeholder="問題文" maxlength="120" />
+    <p class="muted" style="margin:8px 0 2px">選択肢（2〜4個・ラジオで正解を選択）</p>
     ${[0, 1, 2, 3].map((i) => `
       <label class="choice-edit">
         <input type="radio" name="${gid}" value="${i}" ${i === 0 ? "checked" : ""}>
         <input class="c-input" data-i="${i}" placeholder="選択肢${i + 1}${i < 2 ? "（必須）" : "（任意）"}" maxlength="60">
       </label>`).join("")}
   `;
-  $("questions").appendChild(wrap);
-  wrap.querySelector(".del").onclick = () => wrap.remove();
+  if (afterNode && afterNode.nextSibling) $("questions").insertBefore(wrap, afterNode.nextSibling);
+  else if (afterNode) $("questions").appendChild(wrap);
+  else $("questions").appendChild(wrap);
+
+  wrap.querySelector(".del").onclick = () => { wrap.remove(); renumberQuestions(); scheduleSaveDraft(); };
+  wrap.querySelector(".up").onclick = () => moveQuestion(wrap, -1);
+  wrap.querySelector(".down").onclick = () => moveQuestion(wrap, 1);
+  wrap.querySelector(".dup").onclick = () => {
+    addQuestionRow(readQuestionRow(wrap), wrap);
+    renumberQuestions(); scheduleSaveDraft();
+  };
+
   if (data) {
-    wrap.querySelector(".q-text-input").value = data.text;
-    wrap.querySelectorAll(".c-input").forEach((el, i) => { el.value = data.choices[i] || ""; });
+    wrap.querySelector(".q-text-input").value = data.text || "";
+    wrap.querySelectorAll(".c-input").forEach((el, i) => { el.value = (data.choices && data.choices[i]) || ""; });
     const r = wrap.querySelector(`input[name="${gid}"][value="${data.answer}"]`);
     if (r) r.checked = true;
   }
+  renumberQuestions();
+  return wrap;
+}
+
+// 1つの問題カードの内容を読み出す（複製・下書き用）
+function readQuestionRow(wrap) {
+  return {
+    text: wrap.querySelector(".q-text-input").value,
+    choices: [...wrap.querySelectorAll(".c-input")].map((el) => el.value),
+    answer: Number(wrap.querySelector('input[type="radio"]:checked').value),
+  };
+}
+
+// 「問題 N」を振り直す＋先頭/末尾の↑↓を無効化
+function renumberQuestions() {
+  const rows = [...document.querySelectorAll(".qrow")];
+  rows.forEach((row, i) => {
+    row.querySelector(".qnum").textContent = "問題 " + (i + 1);
+    row.querySelector(".up").disabled = i === 0;
+    row.querySelector(".down").disabled = i === rows.length - 1;
+  });
+}
+
+function moveQuestion(wrap, dir) {
+  const rows = [...document.querySelectorAll(".qrow")];
+  const i = rows.indexOf(wrap);
+  const j = i + dir;
+  if (j < 0 || j >= rows.length) return;
+  if (dir < 0) $("questions").insertBefore(wrap, rows[j]);
+  else $("questions").insertBefore(rows[j], wrap);
+  renumberQuestions(); scheduleSaveDraft();
 }
 
 function readSetupForm() {

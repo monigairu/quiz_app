@@ -63,7 +63,13 @@ label { font-weight: 700; font-size: .9rem; color: var(--ink); display: block; }
 label.radio { display: inline-flex; align-items: center; gap: 6px; font-weight: 700; }
 label.radio input, .choice-edit input[type="radio"] { width: auto; margin: 0; }
 .choice-edit { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
-.choice-edit .c-input, .qrow .q-text-input { margin: 0; }
+.choice-edit .c-input { margin: 0 0 0 4px; }
+.qrow .q-text-input { margin: 0 0 4px; font-weight: 700; }
+.qrow-head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.qrow-head .qnum { font-size: .95rem; background: #efe9ff; color: #5b21b6; }
+.qrow-actions { margin-left: auto; display: flex; gap: 6px; }
+.qrow-actions button { width: auto; padding: 8px 12px; font-size: .85rem; box-shadow: 0 3px 0 rgba(0,0,0,.15); }
+.qrow-actions button:active { box-shadow: 0 1px 0 rgba(0,0,0,.15); }
 a { color: #ffe600; font-weight: 700; }
 
 /* ---- ボタン ---- */
