@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+<title>クイズに参加</title>
+<link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+<div class="wrap">
+  <h1 id="title">クイズ大会</h1>
+
+  <!-- 参加フォーム -->
+  <div class="card" id="joinCard">
+    <p class="muted">お名前とテーブル（グループ）を入力して参加してください。</p>
+    <label>お名前</label>
+    <input id="name" placeholder="例）山田太郎" maxlength="20" />
+    <label>テーブル / グループ</label>
+    <input id="group" placeholder="例）Aテーブル / 1班" maxlength="20" />
+    <button id="joinBtn">参加する</button>
+  </div>
+
+  <!-- ゲーム画面 -->
+  <div id="gameArea" style="display:none">
+    <div class="card center" id="statusBar">
+      <span class="pill" id="whoami"></span>
+      <span class="pill" id="progress"></span>
+    </div>
+    <div id="content"></div>
+  </div>
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script>
+const socket = io();
+let state = null;
+
+const $ = (id) => document.getElementById(id);
+
+$('joinBtn').onclick = () => {
+  const name = $('name').value.trim();
+  const group = $('group').value.trim();
+  if (!name || !group) { alert('お名前とテーブルを入力してください'); return; }
+  socket.emit('join', { name, group });
+};
+
+socket.on('joined', () => {
+  $('joinCard').style.display = 'none';
+  $('gameArea').style.display = 'block';
+});
+
+socket.on('state', (s) => { state = s; render(); });
+
+function render() {
+  if (!state) return;
+  $('title').textContent = state.title;
+  if (state.you) {
+    $('whoami').textContent = `${state.you.name}（${state.you.group}）`;
+  }
+  $('progress').textContent =
+    state.index >= 0 ? `第${state.index + 1}問 / ${state.totalQuestions}` : `参加者 ${state.participantCount}人`;
+
+  const c = $('content');
+  if (state.phase === 'lobby') {
+    c.innerHTML = `<div class="card center">
+      <p class="big">📣</p>
+      <p>まもなく開始します。<br>主催者の合図をお待ちください。</p>
+      <p class="muted">現在 ${state.participantCount} 人が参加中</p>
+    </div>`;
+    return;
+  }
+
+  if (state.phase === 'question' && state.question) {
+    renderQuestion(false);
+    return;
+  }
+
+  if (state.phase === 'reveal' && state.question) {
+    renderQuestion(true);
+    return;
+  }
+
+  if (state.phase === 'finished') {
+    renderFinished();
+    return;
+  }
+}
+
+function renderQuestion(reveal) {
+  const q = state.question;
+  const you = state.you;
+  const answered = you && you.answered;
+  let html = `<div class="card"><p class="q-text">${escapeHtml(q.q)}</p></div>`;
+  html += `<div class="choices">`;
+  q.choices.forEach((choice, i) => {
+    let cls = 'choice';
+    if (reveal) {
+      if (i === state.answer) cls += ' correct';
+      else if (you && you.choice === i) cls += ' wrong';
+    } else if (you && you.choice === i) {
+      cls += ' selected';
+    }
+    const disabled = reveal || answered ? 'disabled' : '';
+    const badge = reveal && i === state.answer ? '<span class="badge">正解</span>'
+      : (reveal && you && you.choice === i ? '<span class="badge">あなたの回答</span>' : '');
+    html += `<button class="${cls}" ${disabled} onclick="answer(${i})">${escapeHtml(choice)}${badge}</button>`;
+  });
+  html += `</div>`;
+
+  if (!reveal) {
+    html += answered
+      ? `<div class="card center green-ish"><p class="big">✅</p><p>回答を受け付けました！<br>結果発表をお待ちください。</p></div>`
+      : `<p class="muted center">選択肢をタップして回答してください</p>`;
+  } else {
+    const right = you && you.choice === state.answer;
+    html += `<div class="card center">
+      <p class="big">${right ? '🎉 正解！' : (you && you.answered ? '😢 残念…' : '⏰ 時間切れ')}</p>
+      <p>あなたの得点：<b>${you ? you.score : 0}</b> 点</p>
+    </div>`;
+  }
+  $('content').innerHTML = html;
+}
+
+function renderFinished() {
+  const s = state.standings || [];
+  let html = `<div class="card center"><p class="big">🏆 最終結果</p></div>`;
+  html += `<ol class="standings">`;
+  s.forEach((g, i) => {
+    const top = i < 3 ? `top${i + 1}` : '';
+    const medal = ['🥇', '🥈', '🥉'][i] || (i + 1);
+    html += `<li class="${top}"><span class="rank">${medal}</span>
+      <div><b>${escapeHtml(g.group)}</b><br><span class="muted">${g.members}人・平均 ${g.avg}点</span></div>
+      <span class="score">${g.score}点</span></li>`;
+  });
+  html += `</ol>`;
+  if (state.you) {
+    html += `<div class="card center"><p>あなた（${escapeHtml(state.you.group)}）の個人得点：<b>${state.you.score}点</b></p>
+      <p class="muted">ご参加ありがとうございました！</p></div>`;
+  }
+  $('content').innerHTML = html;
+}
+
+window.answer = (i) => {
+  if (state.you && state.you.answered) return;
+  socket.emit('answer', { choice: i });
+};
+
+function escapeHtml(str) {
+  return String(str).replace(/[&<>"']/g, (m) =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
+}
+</script>
+</body>
+</html>

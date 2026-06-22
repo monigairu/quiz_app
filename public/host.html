@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>主催者コントロール</title>
+<link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+<div class="wrap wide">
+  <h1>🎛️ 主催者コントロール <span class="pill" id="phasePill">―</span></h1>
+
+  <div class="grid2">
+    <!-- 操作パネル -->
+    <div class="card">
+      <h2 id="title" style="margin-top:0">クイズ大会</h2>
+      <p class="muted" id="meta"></p>
+      <div class="row">
+        <button id="nextBtn" class="green">▶ 次の問題</button>
+        <button id="revealBtn" class="ghost">⏱ 締切＆正解発表</button>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <button id="finishBtn">🏆 最終結果を発表</button>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <button id="reloadBtn" class="ghost">↻ 問題を再読込</button>
+        <button id="resetBtn" class="danger">⟲ 最初からやり直す</button>
+      </div>
+      <p class="muted" style="margin-top:14px">参加者URL: <b id="joinUrl"></b><br>会場表示URL: <b id="dispUrl"></b></p>
+    </div>
+
+    <!-- 現在の問題＆回答状況 -->
+    <div class="card">
+      <h3 style="margin-top:0">現在の状況</h3>
+      <div id="liveArea"><p class="muted">「次の問題」で開始します。</p></div>
+    </div>
+  </div>
+
+  <!-- 集計（テーブル別） -->
+  <div class="card">
+    <h3 style="margin-top:0">📊 テーブル別 途中経過</h3>
+    <ol class="standings" id="standings"></ol>
+  </div>
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script>
+const socket = io();
+const $ = (id) => document.getElementById(id);
+let st = null;
+
+socket.on('connect', () => socket.emit('host:join'));
+socket.on('hostState', (s) => { st = s; render(); });
+
+$('nextBtn').onclick = () => socket.emit('host:next');
+$('revealBtn').onclick = () => socket.emit('host:reveal');
+$('finishBtn').onclick = () => { if (confirm('最終結果を発表しますか？')) socket.emit('host:finish'); };
+$('reloadBtn').onclick = () => { if (confirm('questions.json を再読込し、得点をリセットします。よろしいですか？')) socket.emit('host:reload'); };
+$('resetBtn').onclick = () => { if (confirm('最初からやり直します（得点リセット）。よろしいですか？')) socket.emit('host:reset'); };
+
+$('joinUrl').textContent = location.origin + '/';
+$('dispUrl').textContent = location.origin + '/display';
+
+const phaseLabel = { lobby: '受付中', question: '出題中', reveal: '正解発表', finished: '結果発表' };
+
+function render() {
+  if (!st) return;
+  $('title').textContent = st.title;
+  $('phasePill').textContent = phaseLabel[st.phase] || st.phase;
+  $('meta').textContent = `参加 ${st.participantCount}人 / 全${st.totalQuestions}問` +
+    (st.index >= 0 ? `（第${st.index + 1}問）` : '');
+
+  // ボタン活性制御
+  $('nextBtn').disabled = (st.index + 1 >= st.totalQuestions && st.phase !== 'lobby') ||
+    st.phase === 'question';
+  $('nextBtn').textContent = st.index < 0 ? '▶ クイズを開始' : '▶ 次の問題';
+  $('revealBtn').disabled = st.phase !== 'question';
+
+  renderLive();
+  renderStandings();
+}
+
+function renderLive() {
+  const a = $('liveArea');
+  if (!st.question || st.phase === 'lobby' || st.phase === 'finished') {
+    a.innerHTML = st.phase === 'finished'
+      ? '<p class="big center">🏆 結果発表中</p>'
+      : `<p class="muted">受付中… ${st.participantCount}人が参加しています。</p>`;
+    return;
+  }
+  const q = st.question;
+  const stt = st.stats;
+  let html = `<p class="q-text">${escapeHtml(q.q)}</p>`;
+  html += `<p class="muted">回答 ${stt.answered}/${stt.total}人</p>`;
+  q.choices.forEach((c, i) => {
+    const n = stt.counts[i] || 0;
+    const pct = stt.total ? Math.round((n / stt.total) * 100) : 0;
+    const correct = st.phase === 'reveal' && i === q.answer;
+    html += `<div class="statrow">
+      <div>${correct ? '✅ ' : ''}<b>${escapeHtml(c)}</b> <span class="muted">${n}人</span></div>
+      <div class="bar"><span style="width:${pct}%;${correct ? 'background:#22c55e' : ''}"></span></div>
+    </div>`;
+  });
+  if (st.phase === 'reveal') {
+    html += `<p class="center" style="margin-top:10px"><span class="pill">正解：${escapeHtml(q.choices[q.answer])}</span></p>`;
+  }
+  a.innerHTML = html;
+}
+
+function renderStandings() {
+  const ol = $('standings');
+  if (!st.standings.length) { ol.innerHTML = '<p class="muted">まだ集計はありません。</p>'; return; }
+  ol.innerHTML = st.standings.map((g, i) => {
+    const medal = ['🥇', '🥈', '🥉'][i] || (i + 1);
+    const top = i < 3 ? `top${i + 1}` : '';
+    return `<li class="${top}"><span class="rank">${medal}</span>
+      <div><b>${escapeHtml(g.group)}</b><br><span class="muted">${g.members}人・平均${g.avg}点</span></div>
+      <span class="score">${g.score}点</span></li>`;
+  }).join('');
+}
+
+function escapeHtml(str) {
+  return String(str).replace(/[&<>"']/g, (m) =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
+}
+</script>
+</body>
+</html>
