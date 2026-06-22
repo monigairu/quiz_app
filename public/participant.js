@@ -157,9 +157,23 @@ function renderLobby() {
     <p>まもなく開始します。主催者の合図をお待ちください。</p>
     <button class="ghost" onclick="claim('')" style="display:none"></button>
   </div>
-  <p class="muted center"><a href="#" onclick="window.changeTable();return false">テーブルを選び直す</a></p>`;
+  <p class="muted center"><a href="#" onclick="window.changeTable();return false">テーブルから抜ける（選び直す）</a></p>`;
 }
-window.changeTable = () => { myTableId = null; render(); };
+
+// テーブルから完全に離脱（席を解放）→ 他の人が選べるようにする
+window.changeTable = async () => {
+  if (myTableId) {
+    if (!confirm("今のテーブルから抜けます。よろしいですか？\n（空いた席は他の人が選べるようになります）")) return;
+    const id = myTableId;
+    myTableId = null;
+    render();
+    try {
+      await fs.updateDoc(refs.tableDoc(id), { claimedByUid: null, claimedAt: null });
+    } catch (_) { /* スナップショットで整合するので無視 */ }
+  } else {
+    render();
+  }
+};
 
 function renderQuestion(reveal) {
   const idx = ev.currentIndex;
