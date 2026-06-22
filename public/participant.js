@@ -2,7 +2,7 @@
 // 参加者（代表者）画面：テーブル選択・回答・正誤確認・結果
 // =============================================================================
 import {
-  fs, db, refs, ensureAuth, guardConfig, PHASE, $, esc,
+  fs, db, refs, ensureAuth, guardConfig, PHASE, $, esc, showReconnectBanner,
 } from "/common.js";
 import { launchConfetti } from "/confetti.js";
 
@@ -20,7 +20,7 @@ if (guardConfig()) init();
 
 async function init() {
   myUid = (await ensureAuth()).uid;
-  fs.onSnapshot(refs.event, (s) => { ev = s.exists() ? s.data() : null; render(); });
+  fs.onSnapshot(refs.event, (s) => { ev = s.exists() ? s.data() : null; render(); }, showReconnectBanner);
   fs.onSnapshot(refs.questions, (s) => {
     questions = s.docs.map((d) => d.data()).sort((a, b) => a.order - b.order);
     render();

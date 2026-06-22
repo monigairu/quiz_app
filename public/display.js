@@ -1,7 +1,7 @@
 // =============================================================================
 // 会場表示（プロジェクタ）：問題・回答状況・最終順位を大画面に
 // =============================================================================
-import { fs, refs, ensureAuth, guardConfig, PHASE, $, esc } from "/common.js";
+import { fs, refs, ensureAuth, guardConfig, PHASE, $, esc, showReconnectBanner } from "/common.js";
 import { launchConfetti } from "/confetti.js";
 
 let ev = null, questions = [], tables = [], answers = [];
@@ -12,7 +12,7 @@ if (guardConfig()) init();
 
 async function init() {
   await ensureAuth();
-  fs.onSnapshot(refs.event, (s) => { ev = s.exists() ? s.data() : null; render(); });
+  fs.onSnapshot(refs.event, (s) => { ev = s.exists() ? s.data() : null; render(); }, showReconnectBanner);
   fs.onSnapshot(refs.questions, (s) => {
     questions = s.docs.map((d) => d.data()).sort((a, b) => a.order - b.order); render();
   });

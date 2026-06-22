@@ -20,9 +20,27 @@ let app, auth, db;
 if (configReady) {
   app = initializeApp(window.firebaseConfig);
   auth = getAuth(app);
-  db = FS.getFirestore(app);
+  // 社内ネットワーク/プロキシがストリーミングを塞ぐ環境でもリアルタイム更新が
+  // 届くよう、ロングポーリングを自動検出して使う。
+  db = FS.initializeFirestore(app, { experimentalAutoDetectLongPolling: true });
 }
 export { auth, db };
+
+// 接続が不安定なときに気づけるバナー（更新が止まったら再読み込みを促す）
+let bannerShown = false;
+export function showReconnectBanner() {
+  if (bannerShown || !document.body) return;
+  bannerShown = true;
+  const d = document.createElement("div");
+  d.id = "reconnectBanner";
+  d.style.cssText =
+    "position:fixed;top:0;left:0;right:0;z-index:10000;background:#ef4444;color:#fff;" +
+    "padding:10px 14px;text-align:center;font-weight:700;font-family:sans-serif";
+  d.innerHTML = '⚠️ 接続が不安定です ' +
+    '<button onclick="location.reload()" style="margin-left:8px;width:auto;padding:6px 12px;' +
+    'border:none;border-radius:8px;background:#fff;color:#ef4444;font-weight:800;cursor:pointer">再読み込み</button>';
+  document.body.appendChild(d);
+}
 
 // ---- Firestore 参照（データ構造の定義）-------------------------------------
 //   events/{EVENT_ID}                … イベント本体（phase, currentIndex 等）

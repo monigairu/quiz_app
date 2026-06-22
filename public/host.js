@@ -4,7 +4,7 @@
 import {
   fs, db, refs, gradeQuestion, guardConfig,
   watchAuth, googleSignIn, signOutHost, watchAdmins, normEmail,
-  PHASE, phaseLabel, $, esc, ms,
+  PHASE, phaseLabel, $, esc, ms, showReconnectBanner,
 } from "/common.js";
 
 if (guardConfig()) init();
@@ -389,7 +389,7 @@ async function saveAndStart() {
 // 2. リアルタイム購読
 // =============================================================================
 function subscribe() {
-  fs.onSnapshot(refs.event, (snap) => { ev = snap.exists() ? snap.data() : null; render(); });
+  fs.onSnapshot(refs.event, (snap) => { ev = snap.exists() ? snap.data() : null; render(); }, showReconnectBanner);
   fs.onSnapshot(refs.questions, (snap) => {
     questions = snap.docs.map((d) => d.data()).sort((a, b) => a.order - b.order);
     render();
