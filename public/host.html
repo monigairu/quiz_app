@@ -55,8 +55,12 @@
           <label class="radio"><input type="radio" name="scoring" value="speed"> 正解＋早押し順で加点</label>
         </div>
 
-        <label>テーブル（グループ）名 ― 1行に1つ</label>
-        <textarea id="tables" rows="5" placeholder="Aテーブル&#10;Bテーブル&#10;Cテーブル"></textarea>
+        <label>グループ数（プルダウンで一括入力）</label>
+        <select id="tableCount"></select>
+        <p class="muted" style="margin:-8px 0 10px">選ぶと下の欄に「グループ1〜N」を自動入力します（名前は自由に編集できます）。</p>
+
+        <label>テーブル（グループ）名 ― 1行に1つ（編集可）</label>
+        <textarea id="tables" rows="6" placeholder="グループ1&#10;グループ2&#10;グループ3"></textarea>
       </div>
 
       <div class="card">

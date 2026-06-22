@@ -150,7 +150,20 @@ function renderAdminPanel() {
 function buildSetupUI() {
   $("addQ").onclick = () => addQuestionRow();
   $("saveBtn").onclick = saveAndStart;
+  buildTableCountSelect();
   addQuestionRow(); // 初期1問
+}
+
+// グループ数プルダウン（1〜20）。選ぶとテーブル名欄に「グループ1〜N」を自動入力
+function buildTableCountSelect() {
+  const sel = $("tableCount");
+  sel.innerHTML = '<option value="">選択してください…</option>' +
+    Array.from({ length: 20 }, (_, i) => `<option value="${i + 1}">${i + 1} グループ</option>`).join("");
+  sel.onchange = () => {
+    const n = Number(sel.value);
+    if (!n) return;
+    $("tables").value = Array.from({ length: n }, (_, i) => "グループ" + (i + 1)).join("\n");
+  };
 }
 
 function addQuestionRow(data) {

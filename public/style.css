@@ -27,7 +27,7 @@ h1 { font-size: 1.4rem; margin: .2em 0; }
   box-shadow: 0 6px 20px rgba(0,0,0,.25);
 }
 input, button { font-size: 1rem; font-family: inherit; }
-input, textarea {
+input, textarea, select {
   width: 100%; padding: 14px; border-radius: 12px; border: 1px solid #334155;
   background: #0b1220; color: var(--text); margin: 6px 0 14px;
 }
