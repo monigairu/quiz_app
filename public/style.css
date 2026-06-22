@@ -172,3 +172,38 @@ button + button { margin-top: 10px; }
 .qrbox { background: #fff; padding: 16px; border-radius: 18px; display: inline-block; box-shadow: 0 8px 20px rgba(40,10,80,.25); }
 .qrbox img, .qrbox canvas, .qrbox svg { display: block; width: 240px; height: 240px; }
 .joinurl { font-weight: 800; font-size: 1.2rem; word-break: break-all; }
+
+/* ---- 主催者：左サイドバー（クイズ履歴） ---- */
+.layout { display: flex; gap: 16px; align-items: flex-start; }
+.main { flex: 1; min-width: 0; }
+.sidebar {
+  flex: 0 0 240px; width: 240px; position: sticky; top: 16px;
+  background: rgba(255,255,255,.10); border-radius: 18px; padding: 14px;
+  max-height: calc(100vh - 32px); overflow-y: auto;
+}
+.sidebar .muted { color: #e9ddff; }
+.quizlist { display: flex; flex-direction: column; gap: 8px; }
+.quizitem {
+  position: relative; text-align: left; width: 100%; padding: 12px 34px 12px 14px;
+  background: rgba(255,255,255,.10); color: #fff; border-radius: 12px; box-shadow: none;
+  font-weight: 700; line-height: 1.3;
+}
+.quizitem:active { transform: none; }
+.quizitem.active { background: #fff; color: var(--ink); }
+.quizitem .qt { display: block; font-size: .95rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.quizitem .qc { display: block; font-size: .72rem; opacity: .7; font-weight: 600; }
+.quizitem .qx {
+  position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
+  width: 26px; height: 26px; padding: 0; border-radius: 8px; background: transparent;
+  color: inherit; box-shadow: none; font-size: 1rem; opacity: .6;
+}
+.sidebar-toggle { display: none; }
+@media (max-width: 820px) {
+  .sidebar {
+    position: fixed; left: 0; top: 0; bottom: 0; z-index: 50; width: 250px; max-height: none;
+    border-radius: 0; transform: translateX(-100%); transition: transform .2s ease;
+    background: var(--bg2);
+  }
+  .sidebar.open { transform: translateX(0); box-shadow: 0 0 40px rgba(0,0,0,.5); }
+  .sidebar-toggle { display: inline-block; }
+}

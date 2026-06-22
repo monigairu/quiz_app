@@ -22,7 +22,15 @@
 
   <!-- ===== 作業ワークスペース（管理者のみ表示）===== -->
   <section id="workspace" style="display:none">
+   <div class="layout">
+    <aside class="sidebar" id="sidebar">
+      <button class="green" id="newQuizBtn2" style="margin-bottom:12px">＋ 新しいクイズ</button>
+      <p class="muted" style="margin:4px 2px;font-size:.8rem">作成したクイズ（この端末）</p>
+      <div class="quizlist" id="quizList"></div>
+    </aside>
+    <div class="main">
     <div class="card" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+      <button class="ghost sidebar-toggle" id="sidebarToggle" style="width:auto;padding:8px 12px">☰</button>
       <span class="pill">👤 <b id="userEmail"></b></span>
       <span class="pill" id="roleBadge"></span>
       <span class="pill">🔑 ルーム <b id="roomCode"></b></span>
@@ -128,6 +136,8 @@
         <ol class="standings" id="standings"></ol>
       </div>
     </section>
+    </div><!-- /.main -->
+   </div><!-- /.layout -->
   </section>
 </div>
 

@@ -33,6 +33,48 @@ function startNewQuiz() {
   location.href = location.pathname + "?r=" + code;
 }
 
+// ---- クイズ履歴（この端末に保存・ChatGPT 風サイドバー）---------------------
+const HISTORY_KEY = "quizHistory:v1";
+
+function loadHistory() {
+  try { return JSON.parse(localStorage.getItem(HISTORY_KEY)) || []; } catch (_) { return []; }
+}
+function saveHistory(list) {
+  try { localStorage.setItem(HISTORY_KEY, JSON.stringify(list)); } catch (_) { /* noop */ }
+}
+function upsertHistory(code, title) {
+  const list = loadHistory();
+  const i = list.findIndex((x) => x.code === code);
+  if (i >= 0) {
+    if (title) list[i].title = title;
+    list[i].updatedAt = Date.now();
+  } else {
+    list.unshift({ code, title: title || "(無題のクイズ)", updatedAt: Date.now() });
+  }
+  saveHistory(list.slice(0, 50));
+  renderSidebar();
+}
+function removeHistory(code) {
+  if (!confirm("このクイズを履歴から消しますか？（参加データ自体は消えません）")) return;
+  saveHistory(loadHistory().filter((x) => x.code !== code));
+  renderSidebar();
+}
+window.removeHistory = removeHistory;
+window.openQuiz = (code) => { location.href = location.pathname + "?r=" + code; };
+
+function renderSidebar() {
+  const el = $("quizList");
+  if (!el) return;
+  const list = loadHistory().sort((a, b) => b.updatedAt - a.updatedAt);
+  if (!list.length) { el.innerHTML = '<p class="muted" style="font-size:.85rem">まだありません</p>'; return; }
+  el.innerHTML = list.map((it) => `
+    <button class="quizitem ${it.code === EID ? "active" : ""}" onclick="openQuiz('${it.code}')">
+      <span class="qt">${esc(it.title || "(無題のクイズ)")}</span>
+      <span class="qc">🔑 ${esc(it.code)}</span>
+      <span class="qx" title="履歴から削除" onclick="event.stopPropagation();removeHistory('${it.code}')">✕</span>
+    </button>`).join("");
+}
+
 // ---- ローカルキャッシュ（onSnapshot で更新）-------------------------------
 let ev = null;                 // event ドキュメント
 let questions = [];            // [{order, text, choices[]}]
@@ -127,6 +169,10 @@ function bootWorkspace() {
   $("dispUrl").textContent = location.origin + "/display?r=" + EID;
   $("roomCode").textContent = EID;
   $("newQuizBtn").onclick = startNewQuiz;
+  $("newQuizBtn2").onclick = startNewQuiz;
+  $("sidebarToggle").onclick = () => $("sidebar").classList.toggle("open");
+  const existing = loadHistory().find((x) => x.code === EID);
+  upsertHistory(EID, existing ? existing.title : "");
 }
 
 // ---- 管理者設定パネル ------------------------------------------------------
@@ -408,6 +454,7 @@ async function saveAndStart() {
     updatedAt: fs.serverTimestamp(),
   });
   await batch.commit();
+  upsertHistory(EID, form.title);
   $("setupMsg").textContent = "✅ 受付を開始しました。";
 }
 
@@ -506,8 +553,14 @@ window.releaseTable = releaseTable;
 // 4. 描画
 // =============================================================================
 let controlsBound = false;
+let sidebarTitle = "";
 
 function render() {
+  // クイズのタイトルが分かったらサイドバー履歴に反映
+  if (ev && ev.title && ev.title !== sidebarTitle) {
+    sidebarTitle = ev.title;
+    upsertHistory(EID, ev.title);
+  }
   if (!ev) { // 未保存：作問画面
     $("setup").style.display = "block";
     $("control").style.display = "none";
