@@ -9,7 +9,16 @@ import {
 import * as FS from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 export const fs = FS; // Firestore の各関数をまとめて再エクスポート
-export const EVENT_ID = window.EVENT_ID || "main";
+
+// ---- ルームコード（クイズごとのURL）---------------------------------------
+// 参加/表示は URL の ?r=CODE で対象イベントを決める。
+export const urlEventId = new URLSearchParams(location.search).get("r");
+export function genEventCode() {
+  const a = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // 紛らわしい 0/O/1/I を除外
+  let s = "";
+  for (let i = 0; i < 6; i++) s += a[Math.floor(Math.random() * a.length)];
+  return s;
+}
 
 // ---- 設定未投入の検知 -------------------------------------------------------
 export const configReady =
@@ -43,23 +52,29 @@ export function showReconnectBanner() {
 }
 
 // ---- Firestore 参照（データ構造の定義）-------------------------------------
-//   events/{EVENT_ID}                … イベント本体（phase, currentIndex 等）
-//   events/{EVENT_ID}/questions/q{n} … 問題文・選択肢（公開）
-//   events/{EVENT_ID}/keys/q{n}      … 正解インデックス（採点用）
-//   events/{EVENT_ID}/tables/t{n}    … テーブル定義＋ロック状態
-//   events/{EVENT_ID}/answers/{tableId}_{qIndex} … 回答（重複防止のため決定的ID）
-export const refs = configReady ? {
-  event: FS.doc(db, "events", EVENT_ID),
-  questions: FS.collection(db, "events", EVENT_ID, "questions"),
-  keys: FS.collection(db, "events", EVENT_ID, "keys"),
-  tables: FS.collection(db, "events", EVENT_ID, "tables"),
-  answers: FS.collection(db, "events", EVENT_ID, "answers"),
-  questionDoc: (i) => FS.doc(db, "events", EVENT_ID, "questions", "q" + i),
-  keyDoc: (i) => FS.doc(db, "events", EVENT_ID, "keys", "q" + i),
-  tableDoc: (id) => FS.doc(db, "events", EVENT_ID, "tables", id),
-  answerDoc: (tableId, i) => FS.doc(db, "events", EVENT_ID, "answers", tableId + "_" + i),
-  metaAdmins: FS.doc(db, "meta", "admins"), // 共同作成者の許可リスト
-} : null;
+//   events/{code}                … イベント本体（phase, currentIndex 等）
+//   events/{code}/questions/q{n} … 問題文・選択肢（公開）
+//   events/{code}/keys/q{n}      … 正解インデックス（採点用）
+//   events/{code}/tables/t{n}    … テーブル定義＋ロック状態
+//   events/{code}/answers/{tableId}_{qIndex} … 回答（重複防止のため決定的ID）
+//   meta/admins                  … 管理者リスト（イベント横断・グローバル）
+export const metaAdmins = configReady ? FS.doc(db, "meta", "admins") : null;
+
+export function buildRefs(eventId) {
+  if (!configReady || !eventId) return null;
+  return {
+    eventId,
+    event: FS.doc(db, "events", eventId),
+    questions: FS.collection(db, "events", eventId, "questions"),
+    keys: FS.collection(db, "events", eventId, "keys"),
+    tables: FS.collection(db, "events", eventId, "tables"),
+    answers: FS.collection(db, "events", eventId, "answers"),
+    questionDoc: (i) => FS.doc(db, "events", eventId, "questions", "q" + i),
+    keyDoc: (i) => FS.doc(db, "events", eventId, "keys", "q" + i),
+    tableDoc: (id) => FS.doc(db, "events", eventId, "tables", id),
+    answerDoc: (tableId, i) => FS.doc(db, "events", eventId, "answers", tableId + "_" + i),
+  };
+}
 
 // ---- 認証：参加者（匿名ログイン）-------------------------------------------
 export function ensureAuth() {
@@ -85,7 +100,7 @@ export function signOutHost() { return signOut(auth); }
 // セキュリティルールにより「リストに載っている管理者だけ」が読み取れるため、
 // onData が呼ばれた＝自分は管理者、onError（権限なし/未作成）＝管理者ではない、を意味する。
 export function watchAdmins(onData, onError) {
-  return FS.onSnapshot(refs.metaAdmins,
+  return FS.onSnapshot(metaAdmins,
     (snap) => {
       const d = snap.exists() ? snap.data() : {};
       const emails = Array.isArray(d.emails) ? d.emails.map((e) => String(e).trim().toLowerCase()) : [];

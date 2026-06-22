@@ -2,12 +2,36 @@
 // 主催者画面：作問・進行・採点・集計
 // =============================================================================
 import {
-  fs, db, refs, gradeQuestion, guardConfig,
+  fs, db, buildRefs, metaAdmins, urlEventId, genEventCode, gradeQuestion, guardConfig,
   watchAuth, googleSignIn, signOutHost, watchAdmins, normEmail,
   PHASE, phaseLabel, $, esc, ms, showReconnectBanner,
 } from "/common.js";
 
-if (guardConfig()) init();
+// ---- ルームコードの決定（クイズごとのURL）----------------------------------
+let refs = null;
+let EID = null;
+
+if (guardConfig()) boot();
+
+function boot() {
+  EID = urlEventId;
+  if (!EID) {
+    // コード無しで開いたら、前回のコードを再開 or 新規発行して URL に付与
+    EID = localStorage.getItem("lastEventCode") || genEventCode();
+    location.replace(location.pathname + "?r=" + EID);
+    return;
+  }
+  localStorage.setItem("lastEventCode", EID);
+  refs = buildRefs(EID);
+  init();
+}
+
+function startNewQuiz() {
+  if (!confirm("新しいクイズ（別の参加URL）を作成します。よろしいですか？")) return;
+  const code = genEventCode();
+  localStorage.setItem("lastEventCode", code);
+  location.href = location.pathname + "?r=" + code;
+}
 
 // ---- ローカルキャッシュ（onSnapshot で更新）-------------------------------
 let ev = null;                 // event ドキュメント
@@ -86,7 +110,7 @@ async function registerAsOwner() {
   if (!confirm("このGoogleアカウントを、このクイズのオーナー（作成者）として登録します。よろしいですか？")) return;
   const email = normEmail(me.email);
   try {
-    await fs.setDoc(refs.metaAdmins, { emails: [email], owner: email }, { merge: true });
+    await fs.setDoc(metaAdmins, { emails: [email], owner: email }, { merge: true });
     if (unsubAdmins) { unsubAdmins(); unsubAdmins = null; }
     subscribeAdmins(); // 登録後に再購読 → 管理者として入れる
   } catch (e) {
@@ -99,8 +123,10 @@ function bootWorkspace() {
   buildSetupUI();
   subscribe();
   bindAdminPanel();
-  $("joinUrl").textContent = location.origin + "/";
-  $("dispUrl").textContent = location.origin + "/display";
+  $("joinUrl").textContent = location.origin + "/?r=" + EID;
+  $("dispUrl").textContent = location.origin + "/display?r=" + EID;
+  $("roomCode").textContent = EID;
+  $("newQuizBtn").onclick = startNewQuiz;
 }
 
 // ---- 管理者設定パネル ------------------------------------------------------
@@ -118,7 +144,7 @@ async function addCoAdmin() {
   if (coAdmins.includes(email)) { $("adminMsg").textContent = "すでに管理者です"; return; }
   $("adminMsg").textContent = "追加中…";
   try {
-    await fs.updateDoc(refs.metaAdmins, { emails: fs.arrayUnion(email) });
+    await fs.updateDoc(metaAdmins, { emails: fs.arrayUnion(email) });
     $("newAdmin").value = "";
     $("adminMsg").textContent = "✅ 追加しました";
   } catch (e) { $("adminMsg").textContent = "⚠️ " + (e.code || e.message); }
@@ -127,7 +153,7 @@ async function addCoAdmin() {
 async function removeCoAdmin(email) {
   if (email === owner) { alert("オーナーは削除できません。"); return; }
   if (!confirm(`${email} を管理者から外しますか？`)) return;
-  try { await fs.updateDoc(refs.metaAdmins, { emails: fs.arrayRemove(email) }); }
+  try { await fs.updateDoc(metaAdmins, { emails: fs.arrayRemove(email) }); }
   catch (e) { $("adminMsg").textContent = "⚠️ " + (e.code || e.message); }
 }
 window.removeCoAdmin = removeCoAdmin;

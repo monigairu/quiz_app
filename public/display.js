@@ -1,14 +1,24 @@
 // =============================================================================
 // 会場表示（プロジェクタ）：問題・回答状況・最終順位を大画面に
 // =============================================================================
-import { fs, refs, ensureAuth, guardConfig, PHASE, $, esc, showReconnectBanner } from "/common.js";
+import { fs, buildRefs, urlEventId, ensureAuth, guardConfig, PHASE, $, esc, showReconnectBanner } from "/common.js";
 import { launchConfetti } from "/confetti.js";
 
+let refs = null;
 let ev = null, questions = [], tables = [], answers = [];
 let celebratedFinish = false;
-const joinUrl = location.origin + "/";
+const joinUrl = location.origin + "/?r=" + urlEventId;
 
-if (guardConfig()) init();
+if (guardConfig()) boot();
+
+function boot() {
+  if (!urlEventId) {
+    $("content").innerHTML = '<h1>会場表示</h1><p class="muted">主催者画面の「会場表示」リンクから開いてください。</p>';
+    return;
+  }
+  refs = buildRefs(urlEventId);
+  init();
+}
 
 async function init() {
   await ensureAuth();

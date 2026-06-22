@@ -71,11 +71,20 @@ service cloud.firestore {
         allow create, delete: if isAdmin();
         allow update: if signedIn();
       }
-      // 回答：読みは全員。作成は参加者、採点更新・リセット削除は管理者のみ
+      // 回答：読みは全員。作成は参加者本人。
+      //   更新は「採点前の自分の回答（選び直し）」または管理者（採点）。
+      //   削除は管理者のみ（得点リセット）。
       match /answers/{a} {
         allow read: if signedIn();
-        allow create: if signedIn();
-        allow update, delete: if isAdmin();
+        allow create: if signedIn()
+          && request.resource.data.uid == request.auth.uid
+          && request.resource.data.correct == null;
+        allow update: if isAdmin()
+          || ( signedIn()
+               && resource.data.uid == request.auth.uid
+               && resource.data.correct == null
+               && request.resource.data.uid == request.auth.uid );
+        allow delete: if isAdmin();
       }
     }
   }

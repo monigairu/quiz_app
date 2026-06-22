@@ -2,10 +2,11 @@
 // 参加者（代表者）画面：テーブル選択・回答・正誤確認・結果
 // =============================================================================
 import {
-  fs, db, refs, ensureAuth, guardConfig, PHASE, $, esc, showReconnectBanner,
+  fs, db, buildRefs, urlEventId, ensureAuth, guardConfig, PHASE, $, esc, showReconnectBanner,
 } from "/common.js";
 import { launchConfetti } from "/confetti.js";
 
+let refs = null;
 let myUid = null;
 let myTableId = null;
 let ev = null;
@@ -13,10 +14,22 @@ let tables = [];
 let questions = [];
 let celebratedReveal = -1;   // 紙吹雪を出した問題index
 let celebratedFinish = false;
+let editing = false;         // 「選び直す」中か
+let lastIdx = -1;            // 問題が変わったら editing をリセット
 let myAnswers = new Map(); // qIndex -> answer doc
 let unsubAnswers = null;
 
-if (guardConfig()) init();
+if (guardConfig()) boot();
+
+function boot() {
+  if (!urlEventId) {
+    $("content").innerHTML = `<div class="card center"><p class="big">🔗</p>
+      <p>主催者から共有された<br><b>参加用リンク／QRコード</b>から開いてください。</p></div>`;
+    return;
+  }
+  refs = buildRefs(urlEventId);
+  init();
+}
 
 async function init() {
   myUid = (await ensureAuth()).uid;
@@ -81,17 +94,20 @@ async function claim(tableId) {
 }
 window.claim = claim;
 
-// ---- 回答送信 --------------------------------------------------------------
+// ---- 回答送信（即時送信＋締切前なら選び直し可）-----------------------------
 async function answer(choice) {
   const idx = ev.currentIndex;
   if (ev.phase !== PHASE.QUESTION || !myTableId) return;
-  if (myAnswers.has(idx)) return; // 二重回答防止
+  editing = false;
   await fs.setDoc(refs.answerDoc(myTableId, idx), {
-    tableId: myTableId, qIndex: idx, choice,
+    tableId: myTableId, qIndex: idx, choice, uid: myUid,
     answeredAt: fs.serverTimestamp(), correct: null, points: 0,
   });
 }
 window.answer = answer;
+
+// 「選び直す」：締切前のみ。選択肢を再びタップ可能にする
+window.editAnswer = () => { editing = true; render(); };
 
 // =============================================================================
 // 描画
@@ -147,10 +163,12 @@ window.changeTable = () => { myTableId = null; render(); };
 
 function renderQuestion(reveal) {
   const idx = ev.currentIndex;
+  if (idx !== lastIdx) { editing = false; lastIdx = idx; } // 問題が変わったら選び直し状態を解除
   const q = questions[idx];
   if (!q) { $("content").innerHTML = '<div class="card center"><p class="muted">―</p></div>'; return; }
   const mine = myAnswers.get(idx);
   const answered = !!mine;
+  const locked = answered && !editing; // 回答済みで選び直していない
 
   let html = `<div class="card center" style="padding:10px">
     <span class="pill">${esc(myTableName())}</span>
@@ -169,15 +187,22 @@ function renderQuestion(reveal) {
     } else if (mine && mine.choice === i) {
       cls += " selected";
     }
-    const disabled = reveal || answered ? "disabled" : "";
+    const disabled = reveal || locked ? "disabled" : "";
     html += `<button class="${cls}" ${disabled} onclick="answer(${i})">${esc(c)}</button>`;
   });
   html += `</div>`;
 
   if (!reveal) {
-    html += answered
-      ? `<div class="card center"><p class="big pop">✅</p><p>回答を受け付けました！</p></div>`
-      : `<p class="muted center">選択肢をタップして回答</p>`;
+    if (locked) {
+      html += `<div class="card center"><p class="big pop">✅</p>
+        <p>回答を受け付けました！</p>
+        <button class="ghost" style="max-width:240px;margin:6px auto 0" onclick="window.editAnswer()">選び直す</button>
+        <p class="muted" style="margin-top:8px">締切まで変更できます</p></div>`;
+    } else if (editing) {
+      html += `<p class="muted center">選び直し中：新しい選択肢をタップしてください</p>`;
+    } else {
+      html += `<p class="muted center">選択肢をタップして回答</p>`;
+    }
   } else {
     const txt = !answered ? "⏰ 時間切れ" : (mine.correct ? "🎉 正解！" : "😢 不正解");
     html += `<div class="card center"><p class="big pop">${txt}</p>
