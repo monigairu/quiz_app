@@ -60,6 +60,15 @@
           <label class="radio"><input type="radio" name="scoring" value="speed"> 正解＋早押し順で加点</label>
         </div>
 
+        <label>制限時間（各問・カウントダウン表示）</label>
+        <select id="timeLimit">
+          <option value="0">なし（手動締切のみ）</option>
+          <option value="10">10秒</option>
+          <option value="20">20秒</option>
+          <option value="30">30秒</option>
+          <option value="60">60秒</option>
+        </select>
+
         <label>グループ数（プルダウンで一括入力）</label>
         <select id="tableCount"></select>
         <p class="muted" style="margin:-8px 0 10px">選ぶと下の欄に「グループ1〜N」を自動入力します（名前は自由に編集できます）。</p>

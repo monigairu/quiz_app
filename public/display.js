@@ -2,8 +2,11 @@
 // 会場表示（プロジェクタ）：問題・回答状況・最終順位を大画面に
 // =============================================================================
 import { fs, refs, ensureAuth, guardConfig, PHASE, $, esc } from "/common.js";
+import { launchConfetti } from "/confetti.js";
 
 let ev = null, questions = [], tables = [], answers = [];
+let celebratedFinish = false;
+const joinUrl = location.origin + "/";
 
 if (guardConfig()) init();
 
@@ -15,6 +18,32 @@ async function init() {
   });
   fs.onSnapshot(refs.tables, (s) => { tables = s.docs.map((d) => d.data()); render(); });
   fs.onSnapshot(refs.answers, (s) => { answers = s.docs.map((d) => d.data()); render(); });
+  setInterval(tickTimer, 250);
+}
+
+// QRコード描画（qrcode-generator が読み込まれていれば使用）
+function qrHtml(url) {
+  try {
+    if (typeof window.qrcode === "function") {
+      const qr = window.qrcode(0, "M");
+      qr.addData(url);
+      qr.make();
+      return `<div class="qrbox">${qr.createImgTag(6, 0)}</div>`;
+    }
+  } catch (_) { /* フォールバックへ */ }
+  return "";
+}
+
+function tickTimer() {
+  const wrap = document.getElementById("timerWrap");
+  if (!wrap || !ev || ev.phase !== PHASE.QUESTION || !ev.timeLimit || !ev.questionStartedAt) return;
+  const start = ev.questionStartedAt.toMillis ? ev.questionStartedAt.toMillis() : 0;
+  if (!start) return;
+  const total = ev.timeLimit * 1000;
+  const remain = Math.max(0, total - (Date.now() - start));
+  document.getElementById("tnum").textContent = Math.ceil(remain / 1000);
+  document.getElementById("tbarFill").style.width = (remain / total * 100) + "%";
+  wrap.classList.toggle("urgent", remain <= 5000);
 }
 
 function render() {
@@ -26,7 +55,11 @@ function render() {
     : `参加 ${tables.filter((t) => t.claimedByUid).length}/${tables.length} テーブル`;
 
   if (ev.phase === PHASE.SETUP || ev.phase === PHASE.LOBBY) {
-    c.innerHTML = `<h1>${esc(ev.title)}</h1><p class="big">📣</p>
+    c.innerHTML = `<h1>${esc(ev.title)}</h1>
+      <p>スマホで下のQRコードを読み取って参加してください</p>
+      ${qrHtml(joinUrl)}
+      <p class="joinurl">${esc(joinUrl)}</p>
+      <p class="big" style="margin:6px 0">📣</p>
       <p>${tables.filter((t) => t.claimedByUid).length} / ${tables.length} テーブルが参加中</p>`;
     return;
   }
@@ -35,7 +68,13 @@ function render() {
     if (!q) { c.innerHTML = "―"; return; }
     const forThis = answers.filter((a) => a.qIndex === ev.currentIndex);
     const answerIndex = ev.phase === PHASE.REVEAL ? ev.revealIndex : null;
-    let html = `<p class="q-text">${esc(q.text)}</p><div class="choices quiz4">`;
+    let html = "";
+    if (ev.phase === PHASE.QUESTION && ev.timeLimit) {
+      html += `<div class="timer" id="timerWrap">
+        <div class="tnum"><span id="tnum">${ev.timeLimit}</span> 秒</div>
+        <div class="tbar"><span id="tbarFill" style="width:100%"></span></div></div>`;
+    }
+    html += `<p class="q-text">${esc(q.text)}</p><div class="choices quiz4">`;
     q.choices.forEach((ch, i) => {
       const correct = ev.phase === PHASE.REVEAL && i === answerIndex;
       const n = forThis.filter((a) => a.choice === i).length;
@@ -58,5 +97,6 @@ function render() {
     });
     html += `</ol>`;
     c.innerHTML = html;
+    if (!celebratedFinish) { celebratedFinish = true; launchConfetti(160); }
   }
 }

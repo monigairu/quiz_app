@@ -189,6 +189,7 @@ function saveDraft() {
     const draft = {
       title: $("title").value,
       scoring: document.querySelector('input[name="scoring"]:checked').value,
+      timeLimit: $("timeLimit").value,
       tables: $("tables").value,
       questions: serializeQuestions(),
       savedAt: Date.now(),
@@ -208,6 +209,7 @@ function loadDraft() {
   $("title").value = draft.title || "懇親会クイズ大会";
   const r = document.querySelector(`input[name="scoring"][value="${draft.scoring}"]`);
   if (r) r.checked = true;
+  if (draft.timeLimit != null) $("timeLimit").value = draft.timeLimit;
   $("tables").value = draft.tables || "";
   $("questions").innerHTML = "";
   if (draft.questions.length) draft.questions.forEach((q) => addQuestionRow(q));
@@ -316,6 +318,7 @@ function moveQuestion(wrap, dir) {
 function readSetupForm() {
   const title = $("title").value.trim() || "クイズ大会";
   const scoringMode = document.querySelector('input[name="scoring"]:checked').value;
+  const timeLimit = Number($("timeLimit").value) || 0;
   const tableNames = $("tables").value.split("\n").map((s) => s.trim()).filter(Boolean);
 
   const qrows = [...document.querySelectorAll(".qrow")];
@@ -341,7 +344,7 @@ function readSetupForm() {
   }
   if (!tableNames.length) throw new Error("テーブルを1つ以上入力してください");
   if (!qs.length) throw new Error("問題を1問以上入力してください");
-  return { title, scoringMode, tableNames, qs };
+  return { title, scoringMode, timeLimit, tableNames, qs };
 }
 
 async function saveAndStart() {
@@ -368,6 +371,8 @@ async function saveAndStart() {
   batch.set(refs.event, {
     title: form.title,
     scoringMode: form.scoringMode,
+    timeLimit: form.timeLimit,
+    questionStartedAt: null,
     phase: PHASE.LOBBY,
     currentIndex: -1,
     questionCount: form.qs.length,
@@ -417,7 +422,10 @@ function bindControls() {
 async function nextQuestion() {
   const next = (ev.currentIndex ?? -1) + 1;
   if (next >= ev.questionCount) return;
-  await fs.updateDoc(refs.event, { phase: PHASE.QUESTION, currentIndex: next, revealIndex: null });
+  await fs.updateDoc(refs.event, {
+    phase: PHASE.QUESTION, currentIndex: next, revealIndex: null,
+    questionStartedAt: fs.serverTimestamp(),
+  });
 }
 
 async function closeAndGrade() {

@@ -147,3 +147,27 @@ button + button { margin-top: 10px; }
 @media (prefers-reduced-motion: reduce) {
   button, .bar > span, .pop { transition: none !important; animation: none !important; }
 }
+
+/* ---- カウントダウンタイマー ---- */
+.timer { text-align: center; margin: 4px 0 10px; }
+.timer .tnum { font-size: 2rem; font-weight: 800; color: #fff; text-shadow: 0 2px 0 rgba(0,0,0,.18); }
+.timer .tbar { height: 12px; background: rgba(255,255,255,.28); border-radius: 999px; overflow: hidden; margin-top: 4px; }
+.timer .tbar > span { display: block; height: 100%; background: #ffd400; transition: width .25s linear; }
+.timer.urgent .tnum { color: #ffd400; animation: blink .6s steps(2, start) infinite; }
+@keyframes blink { 50% { opacity: .35; } }
+
+/* ---- 紙吹雪 ---- */
+.confetti { position: fixed; inset: 0; pointer-events: none; overflow: hidden; z-index: 9999; }
+.confetti > i {
+  position: absolute; top: -14px; width: 10px; height: 14px; border-radius: 2px;
+  animation-name: fall; animation-timing-function: linear; animation-fill-mode: forwards;
+}
+@keyframes fall {
+  0% { top: -14px; opacity: 1; }
+  100% { top: 105vh; opacity: 1; transform: translateX(40px) rotate(540deg); }
+}
+
+/* ---- QRコード（会場表示） ---- */
+.qrbox { background: #fff; padding: 16px; border-radius: 18px; display: inline-block; box-shadow: 0 8px 20px rgba(40,10,80,.25); }
+.qrbox img, .qrbox canvas, .qrbox svg { display: block; width: 240px; height: 240px; }
+.joinurl { font-weight: 800; font-size: 1.2rem; word-break: break-all; }

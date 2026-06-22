@@ -4,12 +4,15 @@
 import {
   fs, db, refs, ensureAuth, guardConfig, PHASE, $, esc,
 } from "/common.js";
+import { launchConfetti } from "/confetti.js";
 
 let myUid = null;
 let myTableId = null;
 let ev = null;
 let tables = [];
 let questions = [];
+let celebratedReveal = -1;   // 紙吹雪を出した問題index
+let celebratedFinish = false;
 let myAnswers = new Map(); // qIndex -> answer doc
 let unsubAnswers = null;
 
@@ -29,6 +32,20 @@ async function init() {
     if (newId !== myTableId) { myTableId = newId; watchMyAnswers(); }
     render();
   });
+  setInterval(tickTimer, 250);
+}
+
+// カウントダウン（締切は手動。視覚的な「残り時間」演出）
+function tickTimer() {
+  const wrap = document.getElementById("timerWrap");
+  if (!wrap || !ev || ev.phase !== PHASE.QUESTION || !ev.timeLimit || !ev.questionStartedAt) return;
+  const start = ev.questionStartedAt.toMillis ? ev.questionStartedAt.toMillis() : 0;
+  if (!start) return;
+  const total = ev.timeLimit * 1000;
+  const remain = Math.max(0, total - (Date.now() - start));
+  document.getElementById("tnum").textContent = Math.ceil(remain / 1000);
+  document.getElementById("tbarFill").style.width = (remain / total * 100) + "%";
+  wrap.classList.toggle("urgent", remain <= 5000);
 }
 
 function watchMyAnswers() {
@@ -138,6 +155,11 @@ function renderQuestion(reveal) {
   let html = `<div class="card center" style="padding:10px">
     <span class="pill">${esc(myTableName())}</span>
     <span class="pill">第${idx + 1}問 / ${ev.questionCount}</span></div>`;
+  if (!reveal && ev.timeLimit) {
+    html += `<div class="timer" id="timerWrap">
+      <div class="tnum"><span id="tnum">${ev.timeLimit}</span> 秒</div>
+      <div class="tbar"><span id="tbarFill" style="width:100%"></span></div></div>`;
+  }
   html += `<div class="card"><p class="q-text">${esc(q.text)}</p></div><div class="choices quiz4">`;
   q.choices.forEach((c, i) => {
     let cls = "choice";
@@ -154,12 +176,16 @@ function renderQuestion(reveal) {
 
   if (!reveal) {
     html += answered
-      ? `<div class="card center"><p class="big">✅</p><p>回答を受け付けました！</p></div>`
+      ? `<div class="card center"><p class="big pop">✅</p><p>回答を受け付けました！</p></div>`
       : `<p class="muted center">選択肢をタップして回答</p>`;
   } else {
     const txt = !answered ? "⏰ 時間切れ" : (mine.correct ? "🎉 正解！" : "😢 不正解");
-    html += `<div class="card center"><p class="big">${txt}</p>
+    html += `<div class="card center"><p class="big pop">${txt}</p>
       <p class="muted">最終順位は最後にまとめて発表します。</p></div>`;
+    if (answered && mine.correct && celebratedReveal !== idx) {
+      celebratedReveal = idx;
+      launchConfetti();
+    }
   }
   $("content").innerHTML = html;
 }
@@ -176,4 +202,5 @@ function renderFinished() {
   });
   html += `</ol><div class="card center"><p class="muted">ご参加ありがとうございました！</p></div>`;
   $("content").innerHTML = html;
+  if (!celebratedFinish) { celebratedFinish = true; launchConfetti(140); }
 }
