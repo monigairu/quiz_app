@@ -83,6 +83,7 @@ function renderSidebar() {
 
 // ---- ローカルキャッシュ（onSnapshot で更新）-------------------------------
 let ev = null;                 // event ドキュメント
+let eventLoaded = false;       // event の初回スナップショットを受信したか
 let questions = [];            // [{order, text, choices[]}]
 let keys = new Map();          // order -> answerIndex
 let tables = [];               // [{id, name, claimedByUid, claimedAt}]
@@ -198,17 +199,47 @@ function buildSetupUI() {
   $("clearDraft").onclick = clearDraft;
   buildTableCountSelect();
 
-  // 下書きの復元（あれば）。無ければ空の1問でスタート
-  const restored = loadDraft();
-  if (!restored) addQuestionRow();
+  // フォームの初期化はデータ到着後に maybeInitForm() で行う。
+  // この端末に未保存の下書きがあれば、それを優先的に復元。
+  if (loadDraft()) formInitialized = true;
 
   // 入力のたびに自動保存（デバウンス）
   $("setup").addEventListener("input", scheduleSaveDraft);
   $("setup").addEventListener("change", scheduleSaveDraft);
 }
 
-// ---- 下書きの自動保存（localStorage）--------------------------------------
-const DRAFT_KEY = "quizDraft:v1";
+// 保存済み or 下書き or 空、のどれでフォームを埋めるかをデータ確定後に判断
+let formInitialized = false;
+
+function maybeInitForm() {
+  if (formInitialized || accessDenied || !eventLoaded) return;
+  if (ev) {
+    // 保存済みクイズ：問題と正解キーが揃ったらフォームへ読み込む
+    if (questions.length && keys.size >= questions.length) {
+      loadSavedIntoForm();
+      formInitialized = true;
+    }
+  } else {
+    // 新規クイズ：空の1問でスタート
+    addQuestionRow();
+    formInitialized = true;
+  }
+}
+
+// Firestore の保存済み内容を作問フォームに読み込む（共同編集・別端末対応）
+function loadSavedIntoForm() {
+  $("title").value = ev.title || "懇親会クイズ大会";
+  const r = document.querySelector(`input[name="scoring"][value="${ev.scoringMode}"]`);
+  if (r) r.checked = true;
+  if (ev.timeLimit != null) $("timeLimit").value = ev.timeLimit;
+  $("tables").value = tables.map((t) => t.name).join("\n");
+  $("questions").innerHTML = "";
+  questions.forEach((q) => addQuestionRow({ text: q.text, choices: q.choices, answer: keys.get(q.order) ?? 0 }));
+  $("draftStatus").textContent = "📥 保存済みの内容を読み込みました";
+}
+
+// ---- 下書きの自動保存（localStorage・クイズ単位）---------------------------
+const DRAFT_KEY = () => "quizDraft:v1:" + EID;
 let draftTimer = null;
 
 function scheduleSaveDraft() {
@@ -234,7 +265,7 @@ function saveDraft() {
       questions: serializeQuestions(),
       savedAt: Date.now(),
     };
-    localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+    localStorage.setItem(DRAFT_KEY(), JSON.stringify(draft));
     const t = new Date(draft.savedAt);
     $("draftStatus").textContent =
       `💾 自動保存しました（${String(t.getHours()).padStart(2, "0")}:${String(t.getMinutes()).padStart(2, "0")}）`;
@@ -243,8 +274,8 @@ function saveDraft() {
 
 function loadDraft() {
   let draft;
-  try { draft = JSON.parse(localStorage.getItem(DRAFT_KEY)); } catch (_) { return false; }
-  if (!draft || !Array.isArray(draft.questions)) return false;
+  try { draft = JSON.parse(localStorage.getItem(DRAFT_KEY())); } catch (_) { return false; }
+  if (!draft || !Array.isArray(draft.questions) || !draft.questions.length) return false;
 
   $("title").value = draft.title || "懇親会クイズ大会";
   const r = document.querySelector(`input[name="scoring"][value="${draft.scoring}"]`);
@@ -252,21 +283,19 @@ function loadDraft() {
   if (draft.timeLimit != null) $("timeLimit").value = draft.timeLimit;
   $("tables").value = draft.tables || "";
   $("questions").innerHTML = "";
-  if (draft.questions.length) draft.questions.forEach((q) => addQuestionRow(q));
-  else addQuestionRow();
-  $("draftStatus").textContent = "✅ 前回の下書きを復元しました（自動保存中）";
+  draft.questions.forEach((q) => addQuestionRow(q));
+  $("draftStatus").textContent = "✅ この端末の下書きを復元しました（自動保存中）";
   return true;
 }
 
 function clearDraft() {
-  if (!confirm("下書きを消して、入力を最初からやり直しますか？")) return;
-  localStorage.removeItem(DRAFT_KEY);
-  $("title").value = "懇親会クイズ大会";
-  document.querySelector('input[name="scoring"][value="correct"]').checked = true;
-  $("tables").value = "";
-  $("tableCount").value = "";
+  if (!confirm("この端末の下書きを消して、保存済みの内容に戻します。よろしいですか？")) return;
+  localStorage.removeItem(DRAFT_KEY());
   $("questions").innerHTML = "";
-  addQuestionRow();
+  $("tableCount").value = "";
+  formInitialized = false;
+  maybeInitForm();
+  if (!formInitialized) { addQuestionRow(); formInitialized = true; } // 保存前データなし
   $("draftStatus").textContent = "🗑️ 下書きを消しました";
 }
 
@@ -442,6 +471,7 @@ async function saveAndStart() {
 function subscribe() {
   fs.onSnapshot(refs.event, (snap) => {
     ev = snap.exists() ? snap.data() : null;
+    eventLoaded = true;
     computeAccess();
     render();
   }, showReconnectBanner);
@@ -550,6 +580,7 @@ function render() {
   $("accessDenied").style.display = "none";
   if ($("roleBadge")) $("roleBadge").textContent = amOwner ? "オーナー" : (amEditor ? "共同編集者" : "");
   renderSharePanel();
+  maybeInitForm(); // 保存済み/下書き/空 を判断して作問フォームを初期化
 
   // 自分のクイズ一覧（履歴）にタイトルを反映
   if (ev && ev.title && ev.title !== sidebarTitle) {
