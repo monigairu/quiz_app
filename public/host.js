@@ -2,8 +2,8 @@
 // 主催者画面：作問・進行・採点・集計
 // =============================================================================
 import {
-  fs, db, buildRefs, metaAdmins, urlEventId, genEventCode, gradeQuestion, guardConfig,
-  watchAuth, googleSignIn, signOutHost, watchAdmins, normEmail,
+  fs, db, buildRefs, userDoc, urlEventId, genEventCode, gradeQuestion, guardConfig,
+  watchAuth, googleSignIn, signOutHost, normEmail,
   PHASE, phaseLabel, $, esc, ms, showReconnectBanner,
 } from "/common.js";
 
@@ -33,45 +33,51 @@ function startNewQuiz() {
   location.href = location.pathname + "?r=" + code;
 }
 
-// ---- クイズ履歴（この端末に保存・ChatGPT 風サイドバー）---------------------
-const HISTORY_KEY = "quizHistory:v1";
+// ---- クイズ履歴（Googleアカウント単位・Firestore users/{uid}）---------------
+let myQuizzes = [];          // [{code,title,updatedAt}]
+let unsubUser = null;
 
-function loadHistory() {
-  try { return JSON.parse(localStorage.getItem(HISTORY_KEY)) || []; } catch (_) { return []; }
+function watchMyQuizzes() {
+  if (unsubUser) { unsubUser(); unsubUser = null; }
+  unsubUser = fs.onSnapshot(userDoc(me.uid), (snap) => {
+    const d = snap.exists() ? snap.data() : {};
+    myQuizzes = Array.isArray(d.quizzes) ? d.quizzes : [];
+    renderSidebar();
+  }, () => { /* 取得失敗は無視 */ });
 }
-function saveHistory(list) {
-  try { localStorage.setItem(HISTORY_KEY, JSON.stringify(list)); } catch (_) { /* noop */ }
+
+async function persistMyQuizzes() {
+  try { await fs.setDoc(userDoc(me.uid), { quizzes: myQuizzes }, { merge: true }); } catch (_) { /* noop */ }
 }
-function upsertHistory(code, title) {
-  const list = loadHistory();
+
+async function upsertMyQuiz(code, title) {
+  const list = myQuizzes.slice();
   const i = list.findIndex((x) => x.code === code);
-  if (i >= 0) {
-    if (title) list[i].title = title;
-    list[i].updatedAt = Date.now();
-  } else {
-    list.unshift({ code, title: title || "(無題のクイズ)", updatedAt: Date.now() });
-  }
-  saveHistory(list.slice(0, 50));
+  if (i >= 0) { if (title) list[i].title = title; list[i].updatedAt = Date.now(); }
+  else list.unshift({ code, title: title || "(無題のクイズ)", updatedAt: Date.now() });
+  myQuizzes = list.slice(0, 100);
   renderSidebar();
+  await persistMyQuizzes();
 }
-function removeHistory(code) {
-  if (!confirm("このクイズを履歴から消しますか？（参加データ自体は消えません）")) return;
-  saveHistory(loadHistory().filter((x) => x.code !== code));
+
+window.removeQuizFromList = async (code) => {
+  if (!confirm("このクイズを一覧から消しますか？（参加データ自体は消えません）")) return;
+  myQuizzes = myQuizzes.filter((x) => x.code !== code);
   renderSidebar();
-}
-window.removeHistory = removeHistory;
+  await persistMyQuizzes();
+};
 window.openQuiz = (code) => { location.href = location.pathname + "?r=" + code; };
 
 function renderSidebar() {
   const el = $("quizList");
   if (!el) return;
-  const list = loadHistory().sort((a, b) => b.updatedAt - a.updatedAt);
+  const list = myQuizzes.slice().sort((a, b) => b.updatedAt - a.updatedAt);
   if (!list.length) { el.innerHTML = '<p class="muted" style="font-size:.85rem">まだありません</p>'; return; }
   el.innerHTML = list.map((it) => `
     <button class="quizitem ${it.code === EID ? "active" : ""}" onclick="openQuiz('${it.code}')">
       <span class="qt">${esc(it.title || "(無題のクイズ)")}</span>
       <span class="qc">🔑 ${esc(it.code)}</span>
-      <span class="qx" title="履歴から削除" onclick="event.stopPropagation();removeHistory('${it.code}')">✕</span>
+      <span class="qx" title="一覧から削除" onclick="event.stopPropagation();removeQuizFromList('${it.code}')">✕</span>
     </button>`).join("");
 }
 
@@ -82,138 +88,100 @@ let keys = new Map();          // order -> answerIndex
 let tables = [];               // [{id, name, claimedByUid, claimedAt}]
 let answers = [];              // [{tableId, qIndex, choice, answeredAt, correct, points}]
 
-// ---- 認証・認可 ------------------------------------------------------------
-// 管理者(オーナー＋共同作成者)のメールはコードに持たず、Firestore(meta/admins)で管理。
-// セキュリティルールにより「管理者だけ」が meta/admins を読めるので、
-// 読み取り成功＝自分は管理者、エラー＝権限なし(または未初期化)、と判定できる。
+// ---- 認証・所有権 ----------------------------------------------------------
+// ログインは Google アカウントがあれば誰でも。各クイズに ownerUid を持たせ、
+// 自分のクイズは自分だけ／共有(editors)した相手だけが編集・進行できる。
 let me = null;                 // 現在の Google ユーザー
-let isAdmin = false;           // 管理者として読み取りに成功したか
-let coAdmins = [];             // 管理者メール一覧
-let owner = "";                // オーナーのメール
-let unsubAdmins = null;
 let workspaceBooted = false;
+let amOwner = false;           // 自分がこのクイズのオーナー
+let amEditor = false;          // 共同編集者
+let accessDenied = false;      // 自分のクイズでも共有先でもない
 
 function init() {
   $("googleLogin").onclick = () => googleSignIn().catch((e) => {
     $("gateMsg").textContent = "ログインに失敗しました：" + (e.code || e.message);
   });
   $("logoutBtn").onclick = () => signOutHost();
-  watchAuth((user) => { me = user; onAuthChange(); });
+  watchAuth((user) => { me = user; renderGate(); });
 }
-
-function onAuthChange() {
-  if (unsubAdmins) { unsubAdmins(); unsubAdmins = null; }
-  isAdmin = false; coAdmins = []; owner = "";
-  if (me && !me.isAnonymous) subscribeAdmins();
-  renderGate();
-}
-
-function subscribeAdmins() {
-  unsubAdmins = watchAdmins(
-    (data) => { // 読めた＝自分は管理者
-      isAdmin = true; coAdmins = data.emails; owner = data.owner;
-      renderGate(); renderAdminPanel();
-    },
-    () => { // 権限なし or 未初期化
-      isAdmin = false; renderGate();
-    });
-}
-
-const amOwner = () => me && owner && normEmail(me.email) === owner;
 
 function renderGate() {
-  if (isAdmin) {
+  const authed = me && !me.isAnonymous;
+  if (authed) {
     $("gate").style.display = "none";
     $("workspace").style.display = "block";
     $("userEmail").textContent = me.email;
-    $("roleBadge").textContent = amOwner() ? "オーナー" : "共同作成者";
     if (!workspaceBooted) { bootWorkspace(); workspaceBooted = true; }
-    renderAdminPanel();
     return;
   }
   $("gate").style.display = "block";
   $("workspace").style.display = "none";
-  const authed = me && !me.isAnonymous;
-  if (!authed) { $("gateMsg").textContent = ""; return; }
-  // ログイン済みだが管理者ではない（または初回・未初期化）
-  $("gateMsg").innerHTML =
-    `ログイン中：<b>${esc(me.email)}</b><br>` +
-    `このアカウントには作成権限がありません。<br>` +
-    `<button class="green" id="bootBtn" style="max-width:340px;margin:14px auto 6px">` +
-    `初回セットアップ：このアカウントをオーナーとして登録</button>` +
-    `<br><span class="muted">※ 既にオーナーがいる場合は、その方に共同作成者として追加してもらってください。</span>` +
-    `<br><button class="ghost" id="switchAcc" style="max-width:240px;margin:12px auto 0">別のアカウントでログイン</button>`;
-  $("bootBtn").onclick = registerAsOwner;
-  $("switchAcc").onclick = () => signOutHost().then(() => googleSignIn());
-}
-
-// 初回のみ：自分をオーナーとして登録（ルールでオーナー本人以外は拒否される）
-async function registerAsOwner() {
-  if (!confirm("このGoogleアカウントを、このクイズのオーナー（作成者）として登録します。よろしいですか？")) return;
-  const email = normEmail(me.email);
-  try {
-    await fs.setDoc(metaAdmins, { emails: [email], owner: email }, { merge: true });
-    if (unsubAdmins) { unsubAdmins(); unsubAdmins = null; }
-    subscribeAdmins(); // 登録後に再購読 → 管理者として入れる
-  } catch (e) {
-    alert("オーナー登録できませんでした。\n" +
-      "（既に別のオーナーが登録済み、またはこのアカウントは許可されていません）\n" + (e.code || e.message));
-  }
+  $("gateMsg").textContent = "";
 }
 
 function bootWorkspace() {
   buildSetupUI();
+  watchMyQuizzes();
   subscribe();
-  bindAdminPanel();
+  bindSharePanel();
   $("joinUrl").textContent = location.origin + "/?r=" + EID;
   $("dispUrl").textContent = location.origin + "/display?r=" + EID;
   $("roomCode").textContent = EID;
   $("newQuizBtn").onclick = startNewQuiz;
   $("newQuizBtn2").onclick = startNewQuiz;
+  $("denyNew").onclick = startNewQuiz;
   $("sidebarToggle").onclick = () => $("sidebar").classList.toggle("open");
-  const existing = loadHistory().find((x) => x.code === EID);
-  upsertHistory(EID, existing ? existing.title : "");
 }
 
-// ---- 管理者設定パネル ------------------------------------------------------
-function bindAdminPanel() {
+// このクイズに対する自分の権限を判定
+function computeAccess() {
+  if (!ev) { amOwner = true; amEditor = false; accessDenied = false; return; } // 新規（保存時に自分がオーナー）
+  amOwner = ev.ownerUid ? ev.ownerUid === me.uid : true;                       // 旧データ(owner無し)は許可
+  amEditor = Array.isArray(ev.editors) && ev.editors.includes(normEmail(me.email));
+  accessDenied = !(amOwner || amEditor);
+}
+
+// ---- 共有（このクイズの共同編集者）-----------------------------------------
+function bindSharePanel() {
   $("adminToggle").onclick = () => {
     const p = $("adminPanel");
     p.style.display = p.style.display === "none" ? "block" : "none";
   };
-  $("addAdmin").onclick = addCoAdmin;
+  $("addAdmin").onclick = addEditor;
 }
 
-async function addCoAdmin() {
+async function addEditor() {
+  if (!amOwner) { $("adminMsg").textContent = "共有できるのはオーナーだけです"; return; }
   const email = normEmail($("newAdmin").value);
   if (!email || !email.includes("@")) { $("adminMsg").textContent = "⚠️ メールアドレスを入力してください"; return; }
-  if (coAdmins.includes(email)) { $("adminMsg").textContent = "すでに管理者です"; return; }
   $("adminMsg").textContent = "追加中…";
   try {
-    await fs.updateDoc(metaAdmins, { emails: fs.arrayUnion(email) });
+    await fs.updateDoc(refs.event, { editors: fs.arrayUnion(email) });
     $("newAdmin").value = "";
-    $("adminMsg").textContent = "✅ 追加しました";
+    $("adminMsg").textContent = "✅ 共有しました";
   } catch (e) { $("adminMsg").textContent = "⚠️ " + (e.code || e.message); }
 }
 
-async function removeCoAdmin(email) {
-  if (email === owner) { alert("オーナーは削除できません。"); return; }
-  if (!confirm(`${email} を管理者から外しますか？`)) return;
-  try { await fs.updateDoc(metaAdmins, { emails: fs.arrayRemove(email) }); }
+window.removeEditor = async (email) => {
+  if (!confirm(`${email} の共有を解除しますか？`)) return;
+  try { await fs.updateDoc(refs.event, { editors: fs.arrayRemove(email) }); }
   catch (e) { $("adminMsg").textContent = "⚠️ " + (e.code || e.message); }
-}
-window.removeCoAdmin = removeCoAdmin;
+};
 
-function renderAdminPanel() {
+function renderSharePanel() {
   const list = $("adminList");
   if (!list) return;
-  list.innerHTML = coAdmins.map((e) => {
-    const isOwner = e === owner;
-    return `<li><b>${esc(e)}</b>${
-      isOwner ? '<span class="score">オーナー</span>'
-              : `<button class="ghost" style="margin-left:auto;width:auto;padding:6px 12px"
-                   onclick="removeCoAdmin('${esc(e)}')">削除</button>`}</li>`;
-  }).join("");
+  const editors = (ev && Array.isArray(ev.editors)) ? ev.editors : [];
+  const ownerEmail = (ev && ev.ownerEmail) || (amOwner && me ? normEmail(me.email) : "");
+  const rows = [];
+  if (ownerEmail) rows.push(`<li><b>${esc(ownerEmail)}</b><span class="score">オーナー</span></li>`);
+  for (const e of editors) {
+    rows.push(`<li><b>${esc(e)}</b>${
+      amOwner ? `<button class="ghost" style="margin-left:auto;width:auto;padding:6px 12px"
+                   onclick="removeEditor('${esc(e)}')">解除</button>`
+              : '<span class="score">共同編集者</span>'}</li>`);
+  }
+  list.innerHTML = rows.join("") || '<p class="muted">―</p>';
 }
 
 // =============================================================================
@@ -425,36 +393,46 @@ async function saveAndStart() {
   catch (e) { $("setupMsg").textContent = "⚠️ " + e.message; return; }
 
   $("setupMsg").textContent = "保存中…";
-  const batch = fs.writeBatch(db);
+  // 所有者・共有先は維持（再保存でも引き継ぐ）。新規なら自分がオーナー。
+  const ownerUid = (ev && ev.ownerUid) || me.uid;
+  const ownerEmail = (ev && ev.ownerEmail) || normEmail(me.email);
+  const editors = (ev && Array.isArray(ev.editors)) ? ev.editors : [];
 
-  // 既存データを全削除（再保存・やり直し対応）
-  for (const col of [refs.questions, refs.keys, refs.tables, refs.answers]) {
-    const snap = await fs.getDocs(col);
-    snap.forEach((d) => batch.delete(d.ref));
+  try {
+    // 1) イベント本体を先に作成/更新（サブコレクションのルール評価に必要）
+    await fs.setDoc(refs.event, {
+      title: form.title,
+      scoringMode: form.scoringMode,
+      timeLimit: form.timeLimit,
+      questionStartedAt: null,
+      phase: PHASE.LOBBY,
+      currentIndex: -1,
+      questionCount: form.qs.length,
+      standings: null,
+      revealIndex: null,
+      ownerUid, ownerEmail, editors,
+      updatedAt: fs.serverTimestamp(),
+    });
+
+    // 2) サブコレクションを入れ替え
+    const batch = fs.writeBatch(db);
+    for (const col of [refs.questions, refs.keys, refs.tables, refs.answers]) {
+      const snap = await fs.getDocs(col);
+      snap.forEach((d) => batch.delete(d.ref));
+    }
+    form.qs.forEach((q, i) => {
+      batch.set(refs.questionDoc(i), { order: i, text: q.text, choices: q.choices });
+      batch.set(refs.keyDoc(i), { order: i, answerIndex: q.answer });
+    });
+    form.tableNames.forEach((name, i) => {
+      batch.set(refs.tableDoc("t" + i), { name, claimedByUid: null, claimedAt: null });
+    });
+    await batch.commit();
+  } catch (e) {
+    $("setupMsg").textContent = "⚠️ 保存できませんでした：" + (e.code || e.message);
+    return;
   }
-  // 新規書き込み
-  form.qs.forEach((q, i) => {
-    batch.set(refs.questionDoc(i), { order: i, text: q.text, choices: q.choices });
-    batch.set(refs.keyDoc(i), { order: i, answerIndex: q.answer });
-  });
-  form.tableNames.forEach((name, i) => {
-    batch.set(refs.tableDoc("t" + i), { name, claimedByUid: null, claimedAt: null });
-  });
-  batch.set(refs.event, {
-    title: form.title,
-    scoringMode: form.scoringMode,
-    timeLimit: form.timeLimit,
-    questionStartedAt: null,
-    phase: PHASE.LOBBY,
-    currentIndex: -1,
-    questionCount: form.qs.length,
-    standings: null,
-    revealIndex: null,
-    hostUid: me ? me.uid : null,
-    updatedAt: fs.serverTimestamp(),
-  });
-  await batch.commit();
-  upsertHistory(EID, form.title);
+  await upsertMyQuiz(EID, form.title);
   $("setupMsg").textContent = "✅ 受付を開始しました。";
 }
 
@@ -462,7 +440,11 @@ async function saveAndStart() {
 // 2. リアルタイム購読
 // =============================================================================
 function subscribe() {
-  fs.onSnapshot(refs.event, (snap) => { ev = snap.exists() ? snap.data() : null; render(); }, showReconnectBanner);
+  fs.onSnapshot(refs.event, (snap) => {
+    ev = snap.exists() ? snap.data() : null;
+    computeAccess();
+    render();
+  }, showReconnectBanner);
   fs.onSnapshot(refs.questions, (snap) => {
     questions = snap.docs.map((d) => d.data()).sort((a, b) => a.order - b.order);
     render();
@@ -556,10 +538,23 @@ let controlsBound = false;
 let sidebarTitle = "";
 
 function render() {
-  // クイズのタイトルが分かったらサイドバー履歴に反映
+  // 権限のないクイズ → 専用画面
+  if (accessDenied) {
+    $("accessDenied").style.display = "block";
+    $("setup").style.display = "none";
+    $("control").style.display = "none";
+    $("phasePill").textContent = "権限なし";
+    if ($("roleBadge")) $("roleBadge").textContent = "";
+    return;
+  }
+  $("accessDenied").style.display = "none";
+  if ($("roleBadge")) $("roleBadge").textContent = amOwner ? "オーナー" : (amEditor ? "共同編集者" : "");
+  renderSharePanel();
+
+  // 自分のクイズ一覧（履歴）にタイトルを反映
   if (ev && ev.title && ev.title !== sidebarTitle) {
     sidebarTitle = ev.title;
-    upsertHistory(EID, ev.title);
+    upsertMyQuiz(EID, ev.title);
   }
   if (!ev) { // 未保存：作問画面
     $("setup").style.display = "block";

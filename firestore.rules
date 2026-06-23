@@ -1,17 +1,14 @@
 rules_version = '2';
 // =============================================================================
-// Firestore セキュリティルール
+// Firestore セキュリティルール（アカウントごとに分離）
 // -----------------------------------------------------------------------------
-// 認可モデル（メールアドレスはコード・ルールに一切ハードコードしません）：
-//   - 管理者リストは meta/admins ドキュメントの emails 配列で管理（owner を含む）
-//   - 管理者本人だけが meta/admins を読める（メール一覧を一般公開しない）
-//   - 主催者(作問・進行)・正解(keys)の読み書きは管理者のみ
-//   - 参加者(代表者)は匿名ログイン。読み取りと、自分の回答・テーブル確保のみ
-//
-// 初回セットアップ：
-//   オーナーがホスト画面で Google ログイン →「オーナーとして登録」を押すと、
-//   meta/admins が未作成のときに限り、自分を唯一のオーナーとして登録できます。
-//   URL を配布する前に必ずオーナー登録を済ませてください（先着で確定するため）。
+// 認可モデル：
+//   - ログイン：Google アカウントがあれば誰でも（作成可）
+//   - 各クイズ event は ownerUid(作成者) を持つ。編集・進行は
+//     「オーナー本人」または「editors に招待されたメール」のみ
+//   - 参加者(匿名)はルームコードを知っていれば問題・テーブル等を読み、回答できる
+//   - 正解(keys)はオーナー/共同編集者のみ読める
+//   - クイズ履歴 users/{uid} は本人のみ読み書き
 //
 //   デプロイ: npx firebase deploy --only firestore:rules
 // =============================================================================
@@ -26,65 +23,68 @@ service cloud.firestore {
     }
     function emailLower() { return request.auth.token.email.lower(); }
 
-    function adminsExist() {
-      return exists(/databases/$(database)/documents/meta/admins);
-    }
-    function adminEmails() {
-      return get(/databases/$(database)/documents/meta/admins).data.emails;
-    }
-    function isAdmin() {
-      return verifiedEmail() && adminsExist() && (emailLower() in adminEmails());
+    // 個人のクイズ履歴（本人のみ）
+    match /users/{uid} {
+      allow read, write: if signedIn() && request.auth.uid == uid;
     }
 
-    // 管理者リスト（オーナー＋共同作成者）
-    match /meta/admins {
-      // 読めるのは「リストに載っている本人」だけ（＝管理者判定にも使う）
-      allow read: if verifiedEmail() && (emailLower() in resource.data.emails);
-      // 初回作成：未作成のときだけ、自分を唯一のオーナーとして登録できる
-      allow create: if verifiedEmail()
-        && request.resource.data.owner == emailLower()
-        && request.resource.data.emails == [emailLower()];
-      // 変更：既存の管理者のみ。オーナーは固定・保持必須
-      allow update: if isAdmin()
-        && request.resource.data.owner == resource.data.owner
-        && (resource.data.owner in request.resource.data.emails);
-      allow delete: if false;
+    // 対象イベントのオーナー/共同編集者か（サブコレクション用に親 event を参照）
+    function evData(eid) {
+      return get(/databases/$(database)/documents/events/$(eid)).data;
+    }
+    function canEdit(eid) {
+      return signedIn()
+        && exists(/databases/$(database)/documents/events/$(eid))
+        && (
+          evData(eid).ownerUid == request.auth.uid
+          || ( verifiedEmail()
+               && evData(eid).editors is list
+               && (emailLower() in evData(eid).editors) )
+        );
     }
 
     match /events/{eventId} {
-      // イベント本体：読みは参加者も可、書きは管理者のみ
+      // 読みは参加者(匿名含む)も可。書きはオーナー/共同編集者のみ。
       allow read: if signedIn();
-      allow write: if isAdmin();
+      allow create: if verifiedEmail()
+        && request.resource.data.ownerUid == request.auth.uid;
+      allow update: if signedIn()
+        && request.resource.data.ownerUid == resource.data.ownerUid   // オーナー固定
+        && (
+          resource.data.ownerUid == request.auth.uid
+          || ( verifiedEmail()
+               && resource.data.editors is list
+               && (emailLower() in resource.data.editors) )
+        );
+      allow delete: if signedIn() && resource.data.ownerUid == request.auth.uid;
 
-      // 問題文・選択肢：読みは全員、編集は管理者のみ
+      // 問題文・選択肢：読みは全員、編集はオーナー/共同編集者
       match /questions/{q} {
         allow read: if signedIn();
-        allow write: if isAdmin();
+        allow write: if canEdit(eventId);
       }
-      // 正解キー：管理者のみ（参加者には見えない）
+      // 正解キー：オーナー/共同編集者のみ
       match /keys/{k} {
-        allow read, write: if isAdmin();
+        allow read, write: if canEdit(eventId);
       }
-      // テーブル：読みは全員。作成/削除は管理者、確保(update)は参加者も可
+      // テーブル：読みは全員。作成/削除は編集者、確保(update)は参加者も可
       match /tables/{t} {
         allow read: if signedIn();
-        allow create, delete: if isAdmin();
+        allow create, delete: if canEdit(eventId);
         allow update: if signedIn();
       }
-      // 回答：読みは全員。作成は参加者本人。
-      //   更新は「採点前の自分の回答（選び直し）」または管理者（採点）。
-      //   削除は管理者のみ（得点リセット）。
+      // 回答：作成は参加者本人、更新は採点前の本人 or 編集者、削除は編集者
       match /answers/{a} {
         allow read: if signedIn();
         allow create: if signedIn()
           && request.resource.data.uid == request.auth.uid
           && request.resource.data.correct == null;
-        allow update: if isAdmin()
+        allow update: if canEdit(eventId)
           || ( signedIn()
                && resource.data.uid == request.auth.uid
                && resource.data.correct == null
                && request.resource.data.uid == request.auth.uid );
-        allow delete: if isAdmin();
+        allow delete: if canEdit(eventId);
       }
     }
   }

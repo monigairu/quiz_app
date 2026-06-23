@@ -50,17 +50,14 @@ cp public/firebase-config.example.js public/firebase-config.js
 - **匿名（Anonymous）**：参加者（代表者）用
 - **Google**：主催者（作問・進行）用
 
-### 5. オーナー登録（メールはコードに書きません）
-管理者のメールはコード・ルールに **一切ハードコードしません**。初回だけ、オーナー本人が
-ホスト画面で登録します（**URL を配布する前に**実施してください）：
-
-1. `/host` を開いて **Google ログイン**
-2. 表示される「**このアカウントをオーナーとして登録**」を押す
-   → `meta/admins` が未作成のときに限り、自分が唯一のオーナーになります（先着で確定）
-3. 以降は、オーナー（や追加された共同作成者）だけがワークスペースに入れます
-
-共同作成者は、ホスト画面の「管理者設定」から Google メールで追加・削除できます
-（Firestore の `meta/admins` に保存。コード変更・再デプロイ不要）。
+### 5. アカウントごとに分離（オーナー制）
+- `/host` を開いて **Google ログイン**すれば、誰でも自分のクイズを作成できます。
+- 作成したクイズには **ownerUid（作成者）** が記録され、**自分のクイズは自分だけ**が
+  編集・進行できます。一覧（履歴）は **Google アカウント単位**で保存され、別端末で
+  ログインしても自分のクイズが出ます（`users/{uid}`）。
+- **共有**：ホスト画面の「🤝 共有」から共同編集者の Google メールを招待すると、
+  そのクイズだけを一緒に編集・進行できます（`events/{code}.editors`）。
+- 招待していない人は、あなたのクイズを開けません（権限なし画面）。
 
 ## 起動・公開
 
@@ -115,7 +112,8 @@ events/{EVENT_ID}/questions/q{n}  問題文・選択肢（公開）
 events/{EVENT_ID}/keys/q{n}       正解インデックス（採点用・参加者には未公開）
 events/{EVENT_ID}/tables/t{n}     テーブル定義＋ロック状態（claimedByUid）
 events/{EVENT_ID}/answers/{tableId}_{qIndex}  回答（決定的IDで重複防止）
-meta/admins                       管理者の許可リスト { emails: [...], owner }
+events/{code}.ownerUid / editors  作成者(UID) と共同編集者(メール配列)
+users/{uid}.quizzes               そのアカウントが作成/共有されたクイズ一覧（履歴）
 ```
 `EVENT_ID` は `public/firebase-config.js` の `window.EVENT_ID`（既定 `"main"`）。
 

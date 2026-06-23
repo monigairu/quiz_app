@@ -60,6 +60,9 @@ export function showReconnectBanner() {
 //   meta/admins                  … 管理者リスト（イベント横断・グローバル）
 export const metaAdmins = configReady ? FS.doc(db, "meta", "admins") : null;
 
+// 個人のクイズ履歴（Googleアカウント単位）
+export function userDoc(uid) { return FS.doc(db, "users", uid); }
+
 export function buildRefs(eventId) {
   if (!configReady || !eventId) return null;
   return {

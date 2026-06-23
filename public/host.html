@@ -14,7 +14,8 @@
   <section id="gate">
     <div class="card center" id="loginCard">
       <p class="big">🔒</p>
-      <p>作問・進行は <b>許可されたGoogleアカウント</b> のみ行えます。</p>
+      <p>作問・進行には <b>Googleログイン</b> が必要です。<br>
+        <span class="muted">作成したクイズはあなたのアカウントに保存され、他の人には見えません。</span></p>
       <button class="green" id="googleLogin" style="max-width:320px;margin:0 auto">Googleでログイン</button>
       <p class="muted" id="gateMsg" style="margin-top:14px"></p>
     </div>
@@ -25,7 +26,7 @@
    <div class="layout">
     <aside class="sidebar" id="sidebar">
       <button class="green" id="newQuizBtn2" style="margin-bottom:12px">＋ 新しいクイズ</button>
-      <p class="muted" style="margin:4px 2px;font-size:.8rem">作成したクイズ（この端末）</p>
+      <p class="muted" style="margin:4px 2px;font-size:.8rem">あなたのクイズ</p>
       <div class="quizlist" id="quizList"></div>
     </aside>
     <div class="main">
@@ -35,19 +36,27 @@
       <span class="pill" id="roleBadge"></span>
       <span class="pill">🔑 ルーム <b id="roomCode"></b></span>
       <button class="ghost" id="newQuizBtn" style="margin-left:auto;width:auto;padding:8px 14px">新しいクイズ</button>
-      <button class="ghost" id="adminToggle" style="width:auto;padding:8px 14px">管理者設定</button>
+      <button class="ghost" id="adminToggle" style="width:auto;padding:8px 14px">🤝 共有</button>
       <button class="ghost" id="logoutBtn" style="width:auto;padding:8px 14px">ログアウト</button>
     </div>
 
-    <!-- 管理者設定パネル -->
+    <!-- 権限なし画面 -->
+    <div class="card center" id="accessDenied" style="display:none">
+      <p class="big">🔒</p>
+      <p>このクイズを開く権限がありません。<br>
+        <span class="muted">オーナーに共有してもらうか、自分のクイズを開いてください。</span></p>
+      <button class="green" id="denyNew" style="max-width:300px;margin:10px auto 0">＋ 自分の新しいクイズ</button>
+    </div>
+
+    <!-- 共有パネル -->
     <div class="card" id="adminPanel" style="display:none">
-      <h3 style="margin-top:0">👥 管理者（共同作成者）</h3>
-      <p class="muted">許可した Google アカウントのみワークスペースに入れます。</p>
+      <h3 style="margin-top:0">🤝 このクイズを共有</h3>
+      <p class="muted">招待した Google アカウントだけが、このクイズを共同編集できます。</p>
       <ul class="standings" id="adminList" style="margin-bottom:12px"></ul>
-      <label>共同作成者を追加（Googleメールアドレス）</label>
+      <label>共同編集者を追加（Googleメールアドレス）</label>
       <div class="row">
-        <input id="newAdmin" placeholder="例）cocreator@gmail.com" maxlength="120" />
-        <button id="addAdmin" style="flex:0 0 auto;width:auto;padding:14px 18px">追加</button>
+        <input id="newAdmin" placeholder="例）colleague@gmail.com" maxlength="120" />
+        <button id="addAdmin" style="flex:0 0 auto;width:auto;padding:14px 18px">招待</button>
       </div>
       <p class="muted" id="adminMsg"></p>
     </div>
